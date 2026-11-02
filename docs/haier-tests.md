@@ -23,6 +23,37 @@ What this means for the build:
 - A short MENU press currently does nothing visible (tested in Projectivy).
 - **Projectivy runs its own accessibility service** that filters keys (`com.spocky.projengmenu/.services.ProjectivyAccessibilityService`, "Enable button remapping" on). Both services see each key. Projectivy's Back double press and "Menu double press" stay as they are.
 
+## Key log (Task 1, 2026-11-02)
+
+Logged by the probe `QuickService` in YouTube. These are the Android keycodes the app sees, and they replace the "unknown" column above.
+
+| Button | keyCode | scanCode |
+|---|---|---|
+| MENU, short | 82 `MENU` | 240 |
+| Red / Green / Yellow / Blue | 183 / 184 / 185 / 186 `PROG_RED` … `PROG_BLUE` | 240 |
+| FAV | 93 `PAGE_DOWN` | 410 |
+| Up / OK / Back / Home | 19 `DPAD_UP` / 23 `DPAD_CENTER` / 4 `BACK` / 3 `HOME` | 103 / 353 / 158 / 172 |
+
+- **MENU reaches the app**, and the four colours have distinct keycodes. FAV isn't needed as a fallback.
+- **No key repeats arrive.** Every press is one DOWN and one UP with `repeatCount` 0, even Up held 4.7 s.
+- **The remote caps a hold at about 3 s.** It sends UP after 3.0 s (MENU 3026 ms, colours 3004–3016 ms) and then a **separate long-press key**, a 1 ms DOWN/UP, with scanCode 240:
+
+| Held | then sends |
+|---|---|
+| MENU | 250 `TV_INPUT_COMPONENT_2`, which opens Settings |
+| Red | 130 `MEDIA_RECORD` |
+| Green | 127 `MEDIA_PAUSE` |
+| Yellow | 86 `MEDIA_STOP` |
+| Blue | 217 `RO`, which opens the firmware's "Magic Board" |
+
+  For the build: a hold of 1–3 s releases normally. A hold of 3 s or more reaches the app as a 3 s press, then the follow-up key. The follow-up key passes through to the foreground app (Green's `MEDIA_PAUSE` would pause YouTube) unless the app consumes the one that arrives right after a long colour press.
+- Short presses: 180–340 ms.
+- **Projectivy still works** with both services on: its Back double press still starts `Somnambulator` (logcat 22:24:52). The screen flashes because the dream fails (Backdrop is disabled); repeat double presses right after show nothing.
+
+## Standby (Task 1)
+
+`adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_STANDBY` → `performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)` returned true. Logcat: "Going to sleep due to accessibility"; `mWakefulness=Asleep`, display OFF. The remote's power button woke the TV normally, and adb over Wi-Fi came back after the wake. **This is the Sleep tile's standby method**; `attentive_timeout` isn't needed.
+
 ## Setting keys
 
 All in `Settings.Global`. The firmware (`TVSettingConfig` in `com.mediatek.wwtv.tvcenter`) copies each key it knows into the MediaTek config (`g_video__…`, `g_fusion_sound__…`) as soon as it's written; logcat shows `setConfigValue`.

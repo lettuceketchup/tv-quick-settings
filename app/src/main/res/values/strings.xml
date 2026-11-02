@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Quick Settings</string>
+    <string name="service_description">Opens a bar of picture and sound settings with the MENU button, and applies presets with the colour buttons.</string>
+</resources>

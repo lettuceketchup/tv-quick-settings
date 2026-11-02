@@ -22,6 +22,7 @@
 - **Task 0 is done** (`docs/haier-tests.md`, and the Result column in the spec's "Setting keys" table). Tiles: Backlight, Warmth, Preset, Picture, Sound, Output, Sleep, Screen off, Edit. Blue light, Dialogue and Ambient were dropped. Mode keys take **only** the values listed there: an unlisted `picture_mode` value corrupted the User mode on the TV.
 - Sleep steps: 10, 15, 30, 60, 90, 120 min. Reminders at 60, 30, 15, 5 min left, only those < the timer's original length (6 h and 2 h from the spec can never fire, since the longest timer is 120 min). The last-minute extension is `min(15, original)`, and extending doesn't change the original length.
 - **Key events carry no repeats.** An accessibility service sees keys before Android synthesises key repeats, so it most likely gets one DOWN and one UP per press (Task 1's key log checks this; if repeats do arrive, nothing below breaks). Long presses are detected from how long the key was held (`event.eventTime - event.downTime` on UP, long = ≥ 1000 ms), never from `repeatCount`. Holding Up/Down steps once.
+- **The remote caps a hold at 3 s and then sends its own long-press key** (Task 1 key log): MENU → 250 (opens Settings), Red → 130 `MEDIA_RECORD`, Green → 127 `MEDIA_PAUSE`, Yellow → 86 `MEDIA_STOP`, Blue → 217 `RO` (opens Magic Board). After a long colour press (≥ 1000 ms) the service consumes the next key if it is that colour's follow-up and arrives within 500 ms of the UP; MENU's 250 still passes through. Keycodes: MENU 82, colours 183–186, FAV 93.
 - Bar auto-closes after 8 s without a key press, except in edit mode. Normal pills last 2 s, sleep reminders 3 s, and the last-minute pill stays until answered or the timer ends.
 - Copy is sentence case, e.g. "Sleeping in 1 min", "The TV will turn off", "Editing the bar · Back done", "Press OK", "Shown", "Hidden", "Moving", "OK ⋯".
 
@@ -89,31 +90,31 @@ The first build is a probe: a service that logs every key and lets it through, p
 
 - [x] **Step 1: Install the JDK.** Done 2026-11-02: `winget install Microsoft.OpenJDK.17` (`C:\Program Files\Microsoft\jdk-17.0.21.21-hotspot`, `JAVA_HOME` set machine-wide). There's no Gradle package in winget, so the repo carries the Gradle 8.7 wrapper instead (fetched from Gradle's `v8.7.0` tag, jar checksum checked).
 - [x] **Step 2: Install the Android SDK.** Done 2026-11-02: command-line tools `commandlinetools-win-15859902_latest.zip` in `%LOCALAPPDATA%\Android\Sdk\cmdline-tools\latest`, the user accepted the licences, and `platforms;android-34` + `build-tools;34.0.0` are installed. `local.properties` has `sdk.dir`. Anything that writes to the SDK must run in the user's terminal tab: folders Claude's tools create under AppData\Local are redirected and invisible to the user's shell.
-- [ ] **Step 3: Write the Gradle files.** Use the versions from Tech Stack. In `app/build.gradle.kts`: `namespace`/`applicationId` = `io.github.lettuceketchup.tvqs`, `minSdk = 30`, `targetSdk = 30`, `compileSdk = 34`, Kotlin `jvmTarget = "17"`, `buildFeatures { buildConfig = true }` (AGP 8 doesn't generate `BuildConfig` by default, and Tasks 1, 6 and 8 use `BuildConfig.DEBUG`), and `testImplementation("junit:junit:4.13.2")`.
-- [ ] **Step 4: Write the manifest and the service config.**
+- [x] **Step 3: Write the Gradle files.** Use the versions from Tech Stack. In `app/build.gradle.kts`: `namespace`/`applicationId` = `io.github.lettuceketchup.tvqs`, `minSdk = 30`, `targetSdk = 30`, `compileSdk = 34`, Kotlin `jvmTarget = "17"`, `buildFeatures { buildConfig = true }` (AGP 8 doesn't generate `BuildConfig` by default, and Tasks 1, 6 and 8 use `BuildConfig.DEBUG`), and `testImplementation("junit:junit:4.13.2")`.
+- [x] **Step 4: Write the manifest and the service config.**
   - The manifest declares `android.permission.WRITE_SECURE_SETTINGS` with `tools:ignore="ProtectedPermissions"` (granted later over adb), `<uses-feature android:name="android.software.leanback" android:required="false"/>`, no launcher activity, and the service with `android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"`, an intent filter on `android.accessibilityservice.AccessibilityService`, and meta-data pointing at `@xml/quick_service`.
   - `quick_service.xml` sets `android:accessibilityFlags="flagRequestFilterKeyEvents"`, `android:canRequestFilterKeyEvents="true"`, `android:canRetrieveWindowContent="false"` and `android:description="@string/service_description"`. No `accessibilityEventTypes`: the service uses no accessibility events.
-- [ ] **Step 5: Write the probe `QuickService`.**
+- [x] **Step 5: Write the probe `QuickService`.**
   - `onKeyEvent` logs `Log.d("QuickService", …)` with `keyCode`, `scanCode`, `action`, `repeatCount`, `downTime` and `eventTime`, and returns `false` (everything passes through).
   - When `BuildConfig.DEBUG`, `onServiceConnected` registers a receiver for `io.github.lettuceketchup.tvqs.DEBUG_STANDBY` that calls `performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)`. Task 8 adds its sleep broadcast to the same receiver.
   - `onAccessibilityEvent` and `onInterrupt` are empty.
-- [ ] **Step 6: Build.** Run `./gradlew assembleDebug`. Expected: `BUILD SUCCESSFUL`, and `app/build/outputs/apk/debug/app-debug.apk` exists. (There are no tests yet; Task 2's tests are the first.)
-- [ ] **Step 7: Install on the TV (ask the user whether the TV is free first).**
+- [x] **Step 6: Build.** Run `./gradlew assembleDebug`. Expected: `BUILD SUCCESSFUL`, and `app/build/outputs/apk/debug/app-debug.apk` exists. (There are no tests yet; Task 2's tests are the first.)
+- [x] **Step 7: Install on the TV (ask the user whether the TV is free first).**
   ```
   adb install -r app/build/outputs/apk/debug/app-debug.apk
   adb shell pm grant io.github.lettuceketchup.tvqs android.permission.WRITE_SECURE_SETTINGS
   adb shell settings get secure enabled_accessibility_services
   ```
   Save the old value in `changes.md`. Then append `io.github.lettuceketchup.tvqs/.QuickService` to it (`:`-separated, keeping Projectivy's entry) with `settings put secure enabled_accessibility_services …`, and run `settings put secure accessibility_enabled 1`.
-- [ ] **Step 8: Key log.** Run `adb logcat -s QuickService` while the user presses, in YouTube: MENU (short), MENU (held until Settings opens), Red, Green, Yellow, Blue (short, then each held 2 s), FAV, Up (held 2 s), OK and Back. Record in `docs/haier-tests.md`:
+- [x] **Step 8: Key log.** Run `adb logcat -s QuickService` while the user presses, in YouTube: MENU (short), MENU (held until Settings opens), Red, Green, Yellow, Blue (short, then each held 2 s), FAV, Up (held 2 s), OK and Back. Record in `docs/haier-tests.md`:
   - each button's `keyCode` and `scanCode`;
   - whether any DOWN arrives with `repeatCount` > 0 (expected: none);
   - the held MENU's DOWN → UP time and the keyCode of the Settings key that follows;
   - whether MENU shows up at all. If it doesn't, the firmware takes it first: FAV opens the bar instead (spec), and tell the user.
   - If the four colours share one keyCode, tell the user: the presets are then only reachable from the bar.
   Also check that Projectivy's Back double press still works with both services on.
-- [ ] **Step 9: Standby.** Ask whether the TV is free, then `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_STANDBY`. Expected: the TV goes into standby as if power were pressed, and the remote's power button wakes it. Record the result. If it doesn't, try writing `Settings.Secure` `attentive_timeout` to a short value from the app as a second method, and restore it. If neither works, stop and ask the user: the Sleep tile is then dropped or opens the TV's own sleep timer screen.
-- [ ] **Step 10: Log** the install, the grant and the accessibility change in `../tvs/haier/changes.md`. **Commit** (the wrapper jar included):
+- [x] **Step 9: Standby.** Ask whether the TV is free, then `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_STANDBY`. Expected: the TV goes into standby as if power were pressed, and the remote's power button wakes it. Record the result. If it doesn't, try writing `Settings.Secure` `attentive_timeout` to a short value from the app as a second method, and restore it. If neither works, stop and ask the user: the Sleep tile is then dropped or opens the TV's own sleep timer screen.
+- [x] **Step 10: Log** the install, the grant and the accessibility change in `../tvs/haier/changes.md`. **Commit** (the wrapper jar included):
 
 ```bash
 git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup and key-logging probe service"
