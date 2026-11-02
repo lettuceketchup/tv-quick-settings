@@ -15,6 +15,18 @@ android {
         versionName = "0.1"
     }
 
+    buildTypes {
+        release {
+            // ponytail: debug key, fine for sideloading on one TV; a real keystore if this is ever published.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    // Sideloaded, not on Play: targetSdk 30 matches the TV's Android 11.
+    lint {
+        disable += "ExpiredTargetSdkVersion"
+    }
+
     buildFeatures {
         buildConfig = true
     }

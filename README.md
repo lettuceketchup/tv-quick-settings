@@ -4,7 +4,7 @@ A quick settings overlay for Android TV: press a remote button in any app (YouTu
 
 Built first for the Haier Android TV in `tv-debloat` (a local project, not on GitHub) (this repo is a submodule there), whose stock quick menu only works on HDMI/Live TV and only offers picture mode.
 
-Status: **design and TV tests done** ([spec](docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md), [TV tests](docs/haier-tests.md)). Nothing built yet.
+Status: **built and in use on the Haier** (release build, 2026-11-03). [Spec](docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md), [plan](docs/superpowers/plans/2026-11-02-tv-quick-settings.md), [TV tests](docs/haier-tests.md).
 
 ## What the user described (2026-11-02)
 
@@ -34,9 +34,31 @@ Status: **design and TV tests done** ([spec](docs/superpowers/specs/2026-11-02-t
 - Whether to support the Hisense too (different firmware; its keys are unknown).
 - Possible later feature: automatic backlight by time of day.
 
-## Build environment
+## Build and install
 
-Set up 2026-11-02: JDK 17 and the Android command-line tools on this Windows PC (no Android Studio), Kotlin, no runtime libraries. `./gradlew assembleDebug` builds the APK and `./gradlew testDebugUnitTest` runs the unit tests. Install on the TV with `adb install -r`, then the `pm grant` above (once).
+Set up 2026-11-02: JDK 17 and the Android command-line tools on this Windows PC (no Android Studio), Kotlin, no runtime libraries.
+
+Build (the release is signed with the debug key, fine for sideloading; `*.keystore` is gitignored):
+
+```
+./gradlew testDebugUnitTest assembleRelease
+```
+
+Install on the Haier (USB debugging on, `adb connect 192.168.29.186:5555`):
+
+```
+adb -s 192.168.29.186:5555 install -r app/build/outputs/apk/release/app-release.apk
+adb -s 192.168.29.186:5555 shell pm grant io.github.lettuceketchup.tvqs android.permission.WRITE_SECURE_SETTINGS
+adb -s 192.168.29.186:5555 shell settings get secure enabled_accessibility_services
+adb -s 192.168.29.186:5555 shell settings put secure enabled_accessibility_services <old value>:io.github.lettuceketchup.tvqs/.QuickService
+adb -s 192.168.29.186:5555 shell settings put secure accessibility_enabled 1
+```
+
+The grant and the service survive reinstalls (`install -r` with the same key), reboots and turning USB debugging off, so only the first install needs the last four lines. The old value on the Haier was Projectivy's service alone, `com.spocky.projengmenu/com.spocky.projengmenu.services.ProjectivyAccessibilityService`. After a reinstall the service rebinds within a few seconds; if it doesn't, set the old value and then the new one again.
+
+Undo: turn the service off with `settings put secure enabled_accessibility_services <old value>`, or remove the app with `adb uninstall io.github.lettuceketchup.tvqs` (that also drops the grant).
+
+The debug build (`./gradlew assembleDebug`, `app/build/outputs/apk/debug/app-debug.apk`) adds adb hooks for testing: `am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --es key <NAME>`, `DEBUG_SLEEP --ei ms <ms>` and `DEBUG_STANDBY`. The release build has none of them.
 
 ## Try it on the emulator
 

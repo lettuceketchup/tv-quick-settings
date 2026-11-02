@@ -19,7 +19,8 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 11. Task 6 (service wiring, colour-key presets, screen off, corner pill): done 2026-11-03, emulator demo and all seven TV checks passed; result under Task 6 in the plan.
 12. Task 7 (the bar view): done 2026-11-03, TV checks 1–7 and 9 passed, 8 (Output with an ARC system) open for lack of one; fixes for lag, picture-mode values and the pane jump are under Task 7 in the plan.
 13. Task 8 (sleep timer runtime and standby): done 2026-11-03, emulator demo and all four TV checks passed; result and the picture-off fix under Task 8 in the plan.
-14. **Next: execute the plan from Task 10** (release build). Task 4 and Task 9 are intentionally empty. Then the final whole-branch review.
+14. Task 10 (release build, full check, hand-over): done 2026-11-03. The release build is on the TV; the full check and the USB-debugging-off reboot passed. The user also asked for a restyled bar (pill tiles), smoother animations, a chunked backlight bar and a pane that stays open after a pick; see Task 10 in the plan. Task 4 and Task 9 are intentionally empty.
+15. **Next: the final whole-branch review** (superpowers:executing-plans, fresh reviewer), then push `main` once the user approves. Open: Task 7 check 8 (Output with an ARC system), and whether a held Blue should do nothing (it turns the picture off on release now).
 
 ## TV access
 
