@@ -4,7 +4,7 @@
 
 **Goal:** Build a single Android TV app for the Haier. In any app, MENU opens a translucent bar of picture/sound tiles, and the colour buttons apply Day/Evening/Night presets or turn the screen off. The app works with USB debugging off.
 
-**Architecture:** One accessibility service filters remote key events and draws two accessibility-overlay windows: the bar and the corner pill. All behaviour lives in a pure Kotlin `Controller` state machine. It takes keys and a snapshot of setting values, and returns `Effect`s. The service performs those effects: writing `Settings.Global`, showing the pill, starting activities, running the sleep timer. The pure logic is covered by JVM unit tests. Views and Android calls are checked on the TV with `adb exec-out screencap`.
+**Architecture:** One accessibility service filters remote key events and draws two accessibility-overlay windows: the bar and the corner pill. All behaviour lives in a pure Kotlin `Controller` state machine. It takes keys and a snapshot of setting values, and returns `Effect`s. The service performs those effects: writing `Settings.Global`, showing the pill, starting activities, running the sleep timer. The pure logic is covered by JVM unit tests. Views and Android calls are first shown on an Android TV emulator as a recorded, scripted demo (Task 5a), then checked on the TV with `adb exec-out screencap`.
 
 **Tech Stack:** Kotlin 1.9.24, Android Gradle Plugin 8.5.2, Gradle 8.7, JDK 17, compileSdk 34, minSdk/targetSdk 30 (the TV runs Android 11). Programmatic Android Views, with no layout XML beyond the service config. No runtime libraries. JUnit 4.13.2 for tests only. No global Gradle: the repo carries the Gradle 8.7 wrapper (jar checksum-verified, distribution pinned with `distributionSha256Sum`).
 
@@ -26,6 +26,7 @@
 - Bar auto-closes after 8 s without a key press. Normal pills last 2 s, sleep reminders 3 s, and the last-minute pill stays until answered or the timer ends.
 - Copy is sentence case, e.g. "Sleeping in 1 min", "The TV will turn off", "Press OK", "OK ⋯".
 - Plan review (2026-11-02): `docs/superpowers/reviews/2026-11-02-review-pass1.md` to `-pass3.md` explain the changes below (H1–H4, M1–M4, P1–P4 refer to them).
+- **Emulator demo before the TV** (user, 2026-11-02): every task that changes what's on screen (6, 7, 8) runs its scripted demo on the `haier_tv` emulator after the build and before the TV install, and sends the user the video and screenshots with SendUserFile. The emulator is not a Haier: the Haier setting keys are seeded so the app reads sane values, and writes land in `Settings.Global` (the demo log shows them), but the picture doesn't actually dim, warm or turn off. Say so with each demo. Emulator commands always use `adb -s emulator-5554`, **never `adb -e`** (that means "the TCP/IP device", which is the TV when it's connected). Scripted keys go through `DEBUG_KEY` (Task 5a), so a demo doesn't exercise the key filter or pass-through; the TV checks do. The emulator itself, `avdmanager` and `sdkmanager` run in the user's terminal tab (AppData redirect, see Task 1 Step 2).
 
 ## Review Focus
 
@@ -292,6 +293,68 @@ This is the core. The service sends every key here and acts on the returned effe
 - [ ] **Step 4: Run** the tests. Expected: all of Tasks 2, 3 and 5 PASS.
 - [ ] **Step 5: Commit** `"Controller: key routing, panes, presets, warning"`.
 
+### Task 5a: Emulator demo harness
+
+A TV-sized Android TV emulator plus one script that installs the debug build, plays a fixed list of remote presses, and records the screen. It lets the user review each UI task without touching the TV. It's built and checked with the Task 1 probe, so it's ready before Task 6 draws anything.
+
+**Found while setting up (2026-11-02):** on this emulator image, neither `adb shell input keyevent` nor `adb emu event send` reaches an accessibility service's `onKeyEvent`. The service was bound with key filtering, and the key log stayed empty. The image is a production build, so there's no root and no `sendevent`. Scripted keys therefore go through a debug broadcast, `DEBUG_KEY`, into the same `handleKey` the real keys use. A demo shows the bar, the pill and the values, but not the key filter itself or keys passing through to other apps; the TV checks cover those. A hold is just a number in the broadcast, so held presses get exact hold times.
+
+**Files:**
+- Modify: `QuickService.kt` (`handleKey` and `DEBUG_KEY`)
+- Create: `tools/demo.ps1`
+- Create: `demo/probe.txt` (this task's steps); Tasks 6–8 add `demo/task6.txt`, `demo/task7.txt` and `demo/task8.txt`
+- Modify: `.gitignore` (add `demo/out/`)
+- Modify: `README.md` (a short "Try it on the emulator" section)
+
+**Interfaces:**
+- Produces: `QuickService.handleKey(keyCode: Int, down: Boolean, heldMs: Long): Boolean`. `onKeyEvent` calls it with `event.eventTime - event.downTime`. For now it only logs and returns `false`; Task 6 fills it in. It logs `key=<code> (<name>) down=<down> held=<ms> consumed=<result>` to `QuickService`, so the demo log shows what was consumed.
+- Produces: the debug-only `DEBUG_KEY` broadcast. Its extras are `code` (int) and `hold` (long, default 100), and it calls `handleKey(code, true, 0)` and then `handleKey(code, false, hold)`.
+- Produces: `powershell -ExecutionPolicy Bypass -File tools/demo.ps1 demo/<name>.txt` (the execution policy here is Restricted). It writes `demo/out/<name>/`, holding `demo.mp4`, one `<shot>.png` per `shot` step, and `log.txt` (each step, the output of each `shell` step, and `logcat -s QuickService`).
+
+- [x] **Step 1: Emulator and AVD.** Done 2026-11-02 in the terminal tab:
+  - Installed with `sdkmanager "emulator" "system-images;android-30;android-tv;x86" "platform-tools"`. That's Android 11 TV, like the Haier. The emulator refuses to start without `platform-tools` inside the SDK; the winget adb on PATH stays the one used.
+  - Created the AVD with `avdmanager create avd -n haier_tv -k "system-images;android-30;android-tv;x86" -d tv_1080p`. The "Could not load devices.xml" errors are harmless.
+  - Set `hw.keyboard=yes` in `~/.android/avd/haier_tv.avd/config.ini`, so the PC keyboard drives the emulator window.
+  - Start it with `& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd haier_tv`.
+  - Checked: `wm size` is 1920x1080, `wm density` is 320 (the Haier's 960 dp), and the release is 11. `screenrecord` works.
+- [ ] **Step 2: Add `handleKey` and `DEBUG_KEY`** to the probe, as in Interfaces. Build with `./gradlew assembleDebug`.
+- [ ] **Step 3: Write `tools/demo.ps1`.** Its argument is the steps file.
+  1. Every adb call uses `adb -s emulator-5554`. **Never `-e`**: it means "the TCP/IP device", which is the TV when that's connected. Abort unless `shell getprop ro.kernel.qemu` is `1`. After each adb call, stop if `$LASTEXITCODE` isn't 0.
+  2. Prepare the emulator:
+     - wait until `getprop sys.boot_completed` is 1;
+     - install `app/build/outputs/apk/debug/app-debug.apk` with `-r`;
+     - run `pm clear io.github.lettuceketchup.tvqs`. Presets saved by an earlier run would change the expected values. A clear also force-stops the app, which drops it from the accessibility services, so the next two come after it;
+     - grant `WRITE_SECURE_SETTINGS`;
+     - set `enabled_accessibility_services` to `io.github.lettuceketchup.tvqs/.QuickService` and `accessibility_enabled` to 1. The emulator has no Projectivy to keep.
+  3. Always `settings put global` these exact values: `picture_backlight 100`, `picture_color_temperature 2`, `picture_mode 7`, `sound_style 1`, `hdmi_system_audio_control_enabled 0`, `power_picture_off 1`. They're fixed so every run starts the same; don't read them from `docs/haier-global-settings.txt`, whose `picture_mode` is 0.
+  4. Send `input keyevent WAKEUP` (the previous run may have ended in standby), then `input keyevent HOME`. These are system keys, not ours. Clear logcat, start `shell screenrecord --bit-rate 8000000 /sdcard/demo.mp4` as a background process, and wait 2 s for it to start. screenrecord stops by itself at 180 s, so keep each demo under that.
+  5. Run the steps file line by line, skipping blank lines and `#` comments:
+     - `key <name> [holdMs]` sends `DEBUG_KEY`; hold defaults to 100. Map names with a small table: MENU 82, BACK 4, DPAD_UP 19, DPAD_DOWN 20, DPAD_LEFT 21, DPAD_RIGHT 22, DPAD_CENTER 23, PROG_RED 183, PROG_GREEN 184, PROG_YELLOW 185, PROG_BLUE 186, MEDIA_PAUSE 127.
+     - `wait <seconds>`, which allows decimals.
+     - `shot <name>` runs `shell screencap -p /sdcard/shot.png`, then pulls it to `<name>.png`. Don't redirect `exec-out` output: PowerShell 5.1 corrupts binary data in a redirect.
+     - `shell <command>` runs `adb shell <command>` and logs the output.
+     Each line and its output go to `log.txt`.
+  6. Stop the recording (`shell pkill -INT screenrecord`, then wait 2 s), pull `demo.mp4`, append `logcat -d -s QuickService` to `log.txt`, and print the output folder.
+- [ ] **Step 4: Write `demo/probe.txt` and run it** (with the emulator running):
+  ```
+  shot home
+  key MENU
+  key PROG_RED 1500
+  key DPAD_UP
+  wait 1
+  shot after
+  ```
+  Expected:
+  - `demo/out/probe/` has a `demo.mp4` that plays and two 1920×1080 PNGs. Open the PNGs and look at them.
+  - `log.txt` shows MENU, PROG_RED and DPAD_UP, each with a `down=true` and a `down=false` line, `held=1500` on PROG_RED's UP, and `consumed=false` throughout.
+  - Also press the arrow keys in the emulator window and check the key log. If they show up, the README can say the window's keyboard reaches the service. If not, it says the keyboard only moves around the launcher.
+- [ ] **Step 5: README.** Add a short "Try it on the emulator" section:
+  - Start the emulator (the command above), then run the script with `demo/task7.txt` (or the latest demo) to install the build.
+  - Drive it in the emulator window with the arrow keys, Enter and Esc, as far as Step 4 found that works.
+  - Any key can be sent with `adb -s emulator-5554 shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --ei code <keycode>`: MENU is 82 and Red/Green/Yellow/Blue are 183–186.
+  - Picture changes don't show on the emulator.
+- [ ] **Step 6: Commit** `"Emulator demo harness"`.
+
 ### Task 6: Service wiring, settings I/O, screen off and the corner pill
 
 **Files:**
@@ -308,7 +371,35 @@ This is the core. The service sends every key here and acts on the returned effe
   - `Write` uses `Settings.Global.putInt`; that covers screen off/on too (`power_picture_off`). Wrap each write in `try/catch (SecurityException)`; on failure, show a pill "Permission missing · Grant WRITE_SECURE_SETTINGS over adb" instead of crashing.
   - **Timeout:** a `Handler` calls `timeoutClose()` 8 s after the last key while the bar is open, restarted on each key. It's here and not in Task 7, so a MENU pressed during this task's checks can't leave an invisible bar swallowing the arrows.
   - Leave `SetSleep`/`ExtendSleep` as TODO no-ops for now; Task 8 fills them in. Keep Task 1's key log in debug builds.
+  - All of this goes in Task 5a's `handleKey(keyCode, down, heldMs)`, which `onKeyEvent` already calls, so `DEBUG_KEY` presses take the same path. Keep its log line with `consumed=`.
 - [ ] **Step 2: Build** with `./gradlew assembleDebug testDebugUnitTest`. Expected: success.
+- [ ] **Step 2a: Emulator demo.** Write `demo/task6.txt` and run it with `tools/demo.ps1`:
+  ```
+  shot start
+  key PROG_RED
+  wait 0.5
+  shot night
+  shell settings get global picture_backlight
+  key PROG_GREEN
+  wait 0.5
+  shot evening
+  shell settings put global picture_backlight 50
+  key PROG_GREEN 2000
+  wait 0.5
+  shot saved-evening
+  key PROG_GREEN 4000
+  key MEDIA_PAUSE 1
+  key PROG_YELLOW
+  wait 0.5
+  shot day
+  key PROG_BLUE
+  shell settings get global power_picture_off
+  key DPAD_CENTER
+  shell settings get global power_picture_off
+  wait 3
+  shot end
+  ```
+  Expected in `log.txt`: backlight `20` after Red, `0` then `1` around Blue/OK, and both `MEDIA_PAUSE` lines `consumed=true` (rule 0). Expected in the PNGs: the pill top right on `night` ("Night · Backlight 20 · Warm"), `evening`, `saved-evening` ("Saved to Evening · Backlight 50 · Warm") and `day`, and no pill on `start` and `end`. Look at each PNG against the spec's pill description (position, size at 1080p, legibility), fix what differs, and rerun. Then send the user `demo.mp4` and the PNGs, with the note that the picture itself doesn't change on the emulator. Proceed to the TV install only after the user has seen the demo.
 - [ ] **Step 3: Reinstall on the TV (ask the user whether the TV is free first):** `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The grant and the accessibility service from Task 1 stay; check with `adb shell settings get secure enabled_accessibility_services`.
 - [ ] **Step 4: Check on the TV**, playing YouTube with sound:
   1. Red, then Yellow. Expected: the screen dims, then brightens; the pill appears top right each time. `adb exec-out screencap -p > shot.png` shows it; look at the screenshot.
@@ -333,6 +424,40 @@ This is the core. The service sends every key here and acts on the returned effe
 - Icons: vector drawables you draw yourself in `res/drawable/` (simple strokes, a few lines of XML each). Don't use Unicode glyphs (the TV font may lack them) and don't add an icon library. If an icon doesn't read on the TV, drop it rather than redraw it.
 
 - [ ] **Step 1: Implement `BarView`** to the rules above.
+- [ ] **Step 1a: Emulator demo.** Build, then write `demo/task7.txt` and run it. It covers the same ground as Step 2's items 1–6:
+  ```
+  shell settings put global picture_backlight 37
+  key MENU
+  wait 1
+  shot open
+  key DPAD_UP
+  key DPAD_UP
+  shell settings get global picture_backlight
+  shot backlight-up
+  key DPAD_LEFT
+  wait 1
+  shot wrapped-to-screen-off
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  wait 1
+  shot picture-focused
+  key DPAD_CENTER
+  wait 1
+  shot picture-pane
+  key DPAD_DOWN
+  key DPAD_CENTER
+  wait 1
+  shot picture-picked
+  key MENU
+  wait 1
+  shot closed
+  key MENU
+  wait 9
+  shot timed-out
+  ```
+  Expected: `open` shows the bar with Backlight focused at 37; the log shows `50` after the two Ups (37 → 40 → 50, the off-grid snap); `wrapped-to-screen-off` shows Screen off focused with the row scrolled and a left chevron; `picture-pane` shows the list above the Picture tile with a tick on Standard; `picture-picked` shows Vivid; `closed` and `timed-out` show no bar. Check each PNG against "What the view must show" (strip insets, focused tile 1.3× and never clipped, text legible at 1080p), fix what differs, rerun, then send the user the video and PNGs before Step 2.
 - [ ] **Step 2: Build and install** (TV free?), and walk through these with the user. Take a screencap after each, check it, and fix anything that differs from the spec before moving on:
   1. MENU opens the bar.
   2. Up/Down on Backlight change the backlight live.
@@ -364,9 +489,36 @@ Task 0 result: the TV's sleep timer key (`tv_timer_sleep_timer_entry_values`) on
   **Screen-off receiver:** register for `Intent.ACTION_SCREEN_OFF`. If `PowerManager.isInteractive` is still true (picture-off, if Task 6 Step 4.5 found it sends this broadcast), ignore it. Otherwise cancel the sleep timer and call `controller.screenWentOff()`. This stops a timer the user didn't finish (TV turned off with the remote) from putting the TV back into standby when it's next turned on. Our own standby at zero lands here too, which is harmless.
 
   The countdown lives in memory: if the service restarts, the timer is gone (*ponytail: in-memory timer; persist `endAt` if restarts turn out to happen*).
+  **Debug hook:** add `DEBUG_SLEEP` to the debug-only receiver: `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000` sets the remaining time by calling `schedule(ms)` (the same path as `SetSleep`). The receiver is only registered when `BuildConfig.DEBUG`, so the release build doesn't have it.
+- [ ] **Step 1a: Emulator demo.** Build, then write `demo/task8.txt` and run it:
+  ```
+  key MENU
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_RIGHT
+  key DPAD_UP
+  wait 1
+  shot sleep-10
+  key MENU
+  shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000
+  wait 7
+  shot warning
+  key DPAD_CENTER
+  wait 1
+  shot extended
+  shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000
+  wait 7
+  key BACK
+  wait 60
+  shell dumpsys power | grep -i wakefulness
+  ```
+  Expected: `sleep-10` shows the Sleep tile at 10 min; `warning` shows "Sleeping in 1 min · The TV will turn off" with the OK/Back key caps; `extended` shows no pill; the last line shows `Asleep` (the emulator went to standby). Check the PNGs, then send the user the video and PNGs before Step 2.
 - [ ] **Step 2: Verify on the TV** (TV free?).
   - Set a 10-min sleep. The tile shows the minutes left, and Up shows 15 min.
-  - To test without waiting, add `DEBUG_SLEEP` to Task 1's debug-only receiver: `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000` sets the remaining time by calling `schedule(ms)` (the same path as `SetSleep`). (The receiver is only registered when `BuildConfig.DEBUG`, so the release build doesn't have it.)
+  - To test without waiting, use Step 1's `DEBUG_SLEEP` broadcast.
   - The last-minute pill appears. OK gives "+10 min" and the countdown jumps. Run it again, press Back: the pill doesn't come back, and the TV goes to standby at zero.
   - Set a 10-min sleep, turn the TV off with the power button, and turn it on again. Expected: it stays on, and the Sleep tile shows Off.
   - Set a 10-min sleep, press Blue (picture off), then `DEBUG_SLEEP` 65000. Expected: the timer still runs (the TV goes to standby at zero), so picture-off doesn't cancel it.
