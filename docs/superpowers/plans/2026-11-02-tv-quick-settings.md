@@ -379,7 +379,7 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
 - Consumes: `Controller`, `Effect`, `keyOf`, `defaultTiles`, `DEFAULT_PRESETS`.
 - Produces: `QuickService.overlay(view: View, gravity: Int): WindowManager.LayoutParams`, which Task 7 reuses. It creates `TYPE_ACCESSIBILITY_OVERLAY` with `FLAG_NOT_FOCUSABLE or FLAG_NOT_TOUCHABLE or FLAG_LAYOUT_IN_SCREEN` and `PixelFormat.TRANSLUCENT`.
 
-- [ ] **Step 1: Wire up `onKeyEvent`.** Map to `Key` and call `controller.onKey(key, event.action == ACTION_DOWN, event.eventTime - event.downTime)`, then drain and perform the effects. Call it for every key, `OTHER` included (rule 0 needs the previous event). The return value is what's consumed.
+- [x] **Step 1: Wire up `onKeyEvent`.** Map to `Key` and call `controller.onKey(key, event.action == ACTION_DOWN, event.eventTime - event.downTime)`, then drain and perform the effects. Call it for every key, `OTHER` included (rule 0 needs the previous event). The return value is what's consumed.
   - **Refresh:** before passing any MENU or colour **UP** to `onKey`, read all values with `Settings.Global.getInt(contentResolver, key, default)` and call `refresh`. After a `Write` of `picture_mode`, refresh again about 300 ms later and re-render (the TV keeps backlight, and maybe warmth, per picture mode, and updates the keys itself).
   - `Write` uses `Settings.Global.putInt`; that covers screen off/on too (`power_picture_off`). Wrap each write in `try/catch (SecurityException)`; on failure, show a pill "Permission missing · Grant WRITE_SECURE_SETTINGS over adb" instead of crashing.
   - **Timeout:** a `Handler` calls `timeoutClose()` 8 s after the last key while the bar is open, restarted on each key. It's here and not in Task 7, so a MENU pressed during this task's checks can't leave an invisible bar swallowing the arrows.
@@ -392,8 +392,8 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
 
     The service calls `simView?.update(...)` with fresh `Settings.Global` reads of `picture_backlight`, `picture_color_temperature` and `power_picture_off` after every drained `Write` and after every `refresh`. On the TV and in release builds `simView` stays null. It's an approximation; say so with each demo.
   - All of this goes in Task 5a's `handleKey(keyCode, down, heldMs)`, which `onKeyEvent` already calls, so `DEBUG_KEY` presses take the same path. Keep its log line with `consumed=`.
-- [ ] **Step 2: Build** with `./gradlew assembleDebug testDebugUnitTest`. Expected: success.
-- [ ] **Step 2a: Emulator demo.** Write `demo/task6.txt` and run it with `tools/demo.ps1`:
+- [x] **Step 2: Build** with `./gradlew assembleDebug testDebugUnitTest`. Expected: success.
+- [x] **Step 2a: Emulator demo.** Write `demo/task6.txt` and run it with `tools/demo.ps1`:
   ```
   shot start
   key PROG_RED
@@ -424,8 +424,8 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
   shot end
   ```
   Expected in `log.txt`: backlight `20` after Red, `0` then `1` around Blue/OK, and both `MEDIA_PAUSE` lines `consumed=true` (rule 0). Expected in the PNGs: the pill top right on `night` ("Night · Backlight 20 · Warm"), `evening`, `saved-evening` ("Saved to Evening · Backlight 50 · Warm") and `day`, and no pill on `start` and `end`. The simulated picture: `start` and `day` bright neutral grey, `night` dark and amber, `evening` mid-dark and amber, `picture-off` black, and `picture-back` the same as before Blue. Look at each PNG against the spec's pill description (position, size at 1080p, legibility), fix what differs, and rerun. Then send the user `demo.mp4` and the PNGs, with the note that the dimming and tint are a simulation. Proceed to the TV install only after the user has seen the demo.
-- [ ] **Step 3: Reinstall on the TV (ask the user whether the TV is free first):** `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The grant and the accessibility service from Task 1 stay; check with `adb shell settings get secure enabled_accessibility_services`.
-- [ ] **Step 4: Check on the TV**, playing YouTube with sound:
+- [x] **Step 3: Reinstall on the TV (ask the user whether the TV is free first):** `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The grant and the accessibility service from Task 1 stay; check with `adb shell settings get secure enabled_accessibility_services`.
+- [x] **Step 4: Check on the TV**, playing YouTube with sound:
   1. Red, then Yellow. Expected: the screen dims, then brightens; the pill appears top right each time. `adb exec-out screencap -p > shot.png` shows it; look at the screenshot.
   2. Green (backlight 60, Warm), then `adb shell settings put global picture_backlight 50`, then hold Green 2 s. Expected: "Saved to Evening · Backlight 50 · Warm" pill, and the picture doesn't change. Put the default back: `settings put global picture_backlight 60`, hold Green again.
   3. Hold Green 4 s (past the remote's 3 s cap). Expected: the "Saved to Evening" pill, and the video keeps playing (the follow-up `MEDIA_PAUSE` was swallowed).
@@ -433,7 +433,8 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
   5. Blue. Expected: the picture goes off and the sound continues. While it's off, run `adb shell dumpsys power | grep -i wakefulness`. Record the result: if it isn't `Awake`, Task 8's screen-off receiver must ignore picture-off (see Task 8). Then OK: the picture comes back and the video doesn't pause.
   6. Hold Blue 4 s. Expected: the picture stays off, and Magic Board doesn't open. Then OK brings it back.
   7. On an HDMI input: Red, then MENU. Expected: the pill shows over the HDMI picture, and Haier's own HDMI menu doesn't open (MENU opens nothing yet). If the firmware takes either key first, stop and tell the user.
-- [ ] **Step 5: Log** the reinstall and every setting the checks changed in `../tvs/haier/changes.md`. **Commit** `"Service: settings I/O, presets on colour keys, screen off, corner pill"`.
+- [x] **Step 5: Log** the reinstall and every setting the checks changed in `../tvs/haier/changes.md`. **Commit** `"Service: settings I/O, presets on colour keys, screen off, corner pill"`.
+  **Result (2026-11-03):** all seven checks passed. While the picture was off, `mWakefulness=Awake` both times, so picture-off doesn't look like standby to Task 8. `screencap` can't capture an HDMI picture (the video layer isn't in it), so check 7 rests on what the user saw. Builder's calls: the pill's text column is a fixed 220 dp (a full-width level bar stretched it to half the screen), and `overlay(view, gravity, setup = {})` also adds the view, with the block setting size and offsets first. A backlight write lands on whichever input is showing, so restoring values needs the right input in front.
 
 ### Task 7: The bar view
 

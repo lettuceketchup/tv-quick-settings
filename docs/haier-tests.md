@@ -72,6 +72,10 @@ All in `Settings.Global`. The firmware (`TVSettingConfig` in `com.mediatek.wwtv.
 
 Other things seen: the Power page also has Switch Off Timer and "No Signal Auto Power Off" (15 min). `g_video__vid_blue_mute` (`global:g_video__vid_blue_mute`) toggled when the user looked through the HDMI menu (blue screen on no signal, not useful).
 
+## Picture off and standby (Task 6, 2026-11-03)
+
+With the picture off by `power_picture_off` 0, `dumpsys power` still says `mWakefulness=Awake`: the TV doesn't treat it as standby. `adb exec-out screencap` doesn't capture an HDMI input's picture.
+
 ## Screensaver (Ambient)
 
 - **Projectivy already starts it**: "Ambient Mode on 'Back' double press" is on, and a Back double press launches `com.android.systemui/.Somnambulator` (seen in logcat). That covers what the Ambient tile was for.
