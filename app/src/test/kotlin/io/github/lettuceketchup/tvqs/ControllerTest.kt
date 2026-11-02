@@ -36,6 +36,14 @@ class ControllerTest {
         assertNull(c.state.paneIndex)
     }
 
+    @Test fun barReopensOnFirstTile() { c.press(Key.MENU); c.press(Key.RIGHT); c.press(Key.MENU); c.press(Key.MENU); assertEquals(0, c.state.focus) }
+
+    @Test fun rightInPaneClosesItAndMovesOn() {
+        c.press(Key.MENU); c.focusOn(TileId.PICTURE); c.press(Key.OK); c.press(Key.RIGHT)
+        assertNull(c.state.paneIndex)
+        assertEquals(TileId.SOUND, TileId.entries[c.state.focus])
+    }
+
     @Test fun backClosesPaneThenBar() {
         c.press(Key.MENU); c.focusOn(TileId.PICTURE); c.press(Key.OK)
         c.press(Key.BACK); assertTrue(c.state.barOpen); assertNull(c.state.paneIndex)

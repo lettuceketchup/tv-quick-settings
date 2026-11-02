@@ -58,6 +58,7 @@ Look and behaviour were settled with the user through interactive mocks (the las
 - **Every tile:** icon and name on top, value at the bottom. Unfocused tiles are translucent with white text.
 - **The focused tile** is solid white with dark text, only a little larger than the others (about 1.3× wider and slightly taller). The user rejected a big jump in size. Names must not be clipped, so use a width that fits the longest name.
 - **Left/Right** moves focus and **wraps around**: Left on the first tile goes to the last, and Right on the last goes to the first.
+- The bar always opens with focus on the first tile; it doesn't remember the last one (user, 2026-11-03).
 - **Up/Down** changes the focused tile's value and applies it at once, one step per press (holding the key doesn't keep stepping). The tile is laid out so the direction of the press is obvious (below).
 - **Back** or **MENU** closes the bar. It also closes after about 8 seconds without a press (*my call*).
 - The video keeps playing underneath.
@@ -67,7 +68,7 @@ Look and behaviour were settled with the user through interactive mocks (the las
 - **Level** (Backlight): the value as a number, with a short **vertical segmented bar** beside it. Each segment is one step. The focused tile shows ▲ above the bar and ▼ below it, and hides an arrow at its limit.
   - Backlight: steps of 10, so 10 segments (0–100).
 - **Mode** (Warmth, Preset, Picture, Sound, Output): the focused tile shows three lines, "▲ previous option", the **current option**, then "▼ next option". Modes **don't wrap**: at either end that line is blank, so a two-option mode like Output never shows the same option on both sides.
-  - Picture and Sound have an **"OK ⋯"** hint. OK opens a **list pane** above the tile with every option and a tick on the current one. Up/Down moves the highlight, OK picks and Back closes the pane.
+  - Picture and Sound have an **"OK ⋯"** hint. OK opens a **list pane** above the tile with every option and a tick on the current one. Up/Down moves the highlight, OK picks and Back closes the pane. Left/Right closes the pane and moves focus as usual (user, 2026-11-03).
   - Warmth, Preset and Output have no pane, because Up/Down covers their few options.
 - **Sleep**: see "Sleep timer" below. No pane.
 - **Action** (Screen off): the focused tile says "Press OK". OK does the same as Blue.

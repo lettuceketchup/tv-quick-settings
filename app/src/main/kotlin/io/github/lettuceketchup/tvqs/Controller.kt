@@ -104,7 +104,7 @@ class Controller(private val tiles: Map<TileId, Tile>, presets: List<Preset>) {
 
     private fun release(k: Key, long: Boolean) {
         when (k) {
-            Key.MENU -> if (!long) { barOpen = !barOpen; paneIndex = null }
+            Key.MENU -> if (!long) { barOpen = !barOpen; paneIndex = null; focus = 0 }
             Key.BLUE -> screenOff()
             else -> {
                 val i = COLOUR_PRESET.getValue(k)
@@ -163,6 +163,7 @@ class Controller(private val tiles: Map<TileId, Tile>, presets: List<Preset>) {
             Key.DOWN -> paneIndex = (i + 1).coerceAtMost(tile.options.lastIndex)
             Key.OK -> { write(tile.id, tile.key!!, tile.options[i].value); paneIndex = null }
             Key.BACK -> paneIndex = null
+            Key.LEFT, Key.RIGHT -> { paneIndex = null; barKey(k) }
             else -> {}
         }
     }
