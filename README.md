@@ -37,3 +37,13 @@ Status: **design and TV tests done** ([spec](docs/superpowers/specs/2026-11-02-t
 ## Build environment
 
 Not set up yet. Plan: Android command-line tools + JDK on this Windows PC (no Android Studio needed), Kotlin, no third-party libraries unless needed. Install with adb: `adb install`, then the `pm grant` above.
+
+## Try it on the emulator
+
+The `haier_tv` emulator (Android 11 TV, 1920×1080, like the Haier's UI) runs the real debug build without touching the TV.
+
+1. Start it from a terminal: `& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd haier_tv`
+2. Build, then run a demo, which also installs the build: `./gradlew assembleDebug`, then `powershell -ExecutionPolicy Bypass -File tools/demo.ps1 demo/task7.txt` (or the latest demo). The video, screenshots and log land in `demo/out/<name>/`.
+3. Press any remote key yourself with `adb -s emulator-5554 shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --es key <name>`, e.g. `MENU`, `DPAD_UP` or `PROG_RED` to `PROG_BLUE`. Add `--el hold 1500` for a held press. Always use `-s emulator-5554`, never `-e`: that's the TV when it's connected.
+
+Keys typed with `adb shell input keyevent` don't reach the app on the emulator, which is why the broadcast exists. The emulator has no Haier panel: from Task 6, backlight, warmth and screen off are simulated on a grey backdrop (darkening and a tint).
