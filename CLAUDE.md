@@ -11,7 +11,8 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 3. TV tests (Task 0): done 2026-11-02, see `docs/haier-tests.md`. Final tiles: Backlight, Warmth, Preset, Picture, Sound, Output, Sleep, Screen off (Edit was dropped in the plan review).
 4. Task 1 (toolchain and key-logging probe): done, committed.
 5. Plan review: done 2026-11-02, applied to the plan and spec. The three passes are in `docs/superpowers/reviews/` (`2026-11-02-review-pass1.md` to `-pass3.md`). The user approved the four correctness fixes (H1–H4), the accepted ponytail cuts, dropping edit mode, and keeping long-press save, the list pane and drawn icons.
-6. **Next: execute the plan from Task 2.** Task 4 and Task 9 are intentionally empty.
+6. Task 2 (tiles, steps, presets): done, committed. 14 unit tests in `TilesTest.kt`.
+7. **Next: execute the plan from Task 3.** Task 4 and Task 9 are intentionally empty.
 
 ## TV access
 
