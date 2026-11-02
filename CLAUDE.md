@@ -15,7 +15,8 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 7. Emulator demo added to the plan 2026-11-02 (Task 5a, and demo steps in Tasks 6–8; review in `docs/superpowers/reviews/2026-11-02-review-pass4.md`). The `haier_tv` emulator is installed; start it from a terminal tab. Use `adb -s emulator-5554`, never `adb -e` (that can hit the TV).
 8. Task 3 (sleep timer maths): done, committed. 12 unit tests in `SleepMathTest.kt`.
 9. Task 5 (controller): done, committed. 23 unit tests in `ControllerTest.kt`; rulings in the SDD ledger.
-10. **Next: execute the plan from Task 5a** (emulator demo harness; Step 1 is done). Task 4 and Task 9 are intentionally empty.
+10. Task 5a (emulator demo harness): done, committed. `tools/demo.ps1 demo/<name>.txt`; see README "Try it on the emulator".
+11. **Next: execute the plan from Task 6.** Task 4 and Task 9 are intentionally empty.
 
 ## TV access
 
