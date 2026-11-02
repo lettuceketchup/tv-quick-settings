@@ -18,7 +18,8 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 10. Task 5a (emulator demo harness): done, committed. `tools/demo.ps1 demo/<name>.txt`; see README "Try it on the emulator". The emulator window's arrows, Enter and Esc reach the app.
 11. Task 6 (service wiring, colour-key presets, screen off, corner pill): done 2026-11-03, emulator demo and all seven TV checks passed; result under Task 6 in the plan.
 12. Task 7 (the bar view): done 2026-11-03, TV checks 1–7 and 9 passed, 8 (Output with an ARC system) open for lack of one; fixes for lag, picture-mode values and the pane jump are under Task 7 in the plan.
-13. **Next: execute the plan from Task 8** (sleep timer). Task 4 and Task 9 are intentionally empty.
+13. Task 8 (sleep timer runtime and standby): done 2026-11-03, emulator demo and all four TV checks passed; result and the picture-off fix under Task 8 in the plan.
+14. **Next: execute the plan from Task 10** (release build). Task 4 and Task 9 are intentionally empty. Then the final whole-branch review.
 
 ## TV access
 

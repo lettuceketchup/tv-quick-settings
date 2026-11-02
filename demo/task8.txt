@@ -1,0 +1,22 @@
+key MENU
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_UP
+wait 1
+shot sleep-10
+key MENU
+shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000
+wait 7
+shot warning
+key DPAD_CENTER
+wait 1
+shot extended
+shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000
+wait 7
+key BACK
+wait 60
+shell dumpsys power | grep -i wakefulness

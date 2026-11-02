@@ -508,7 +508,7 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
 
 Task 0 result: the TV's sleep timer key (`tv_timer_sleep_timer_entry_values`) only mirrors the menu, and writing it starts nothing. So the app keeps its own countdown and turns the TV off at zero with the standby method Task 1 Step 9 confirmed.
 
-- [ ] **Step 1: Implement the countdown.** Store `endAt = SystemClock.elapsedRealtime() + ms` and `started`. One function, `schedule(msLeft)`, cancels every pending sleep callback and posts each event once with `Handler.postDelayed` (no tick loop):
+- [x] **Step 1: Implement the countdown.** Store `endAt = SystemClock.elapsedRealtime() + ms` and `started`. One function, `schedule(msLeft)`, cancels every pending sleep callback and posts each event once with `Handler.postDelayed` (no tick loop):
   - each `m` in `remindersAhead(started, msLeft)`, at `msLeft - m·60000`: `Pill("Sleeping in $m min", "Sleep timer", null, 3000)`;
   - at `msLeft - 60000` (or now, if less is left): `controller.showSleepWarning()` and `Pill("Sleeping in 1 min", "The TV will turn off", null, 0)`, with the OK/Back choices drawn as key caps ("OK +N min", "Back Dismiss"), N = `extensionMin(started)`. It fires once, so a dismissed warning doesn't come back;
   - at `msLeft`: `clearSleepWarning()`, reset, then the standby method.
@@ -521,7 +521,7 @@ Task 0 result: the TV's sleep timer key (`tv_timer_sleep_timer_entry_values`) on
 
   The countdown lives in memory: if the service restarts, the timer is gone (*ponytail: in-memory timer; persist `endAt` if restarts turn out to happen*).
   **Debug hook:** add `DEBUG_SLEEP` to the debug-only receiver: `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000` sets the remaining time by calling `schedule(ms)` (the same path as `SetSleep`). The receiver is only registered when `BuildConfig.DEBUG`, so the release build doesn't have it.
-- [ ] **Step 1a: Emulator demo.** Build, then write `demo/task8.txt` and run it:
+- [x] **Step 1a: Emulator demo.** Build, then write `demo/task8.txt` and run it:
   ```
   key MENU
   key DPAD_RIGHT
@@ -547,13 +547,14 @@ Task 0 result: the TV's sleep timer key (`tv_timer_sleep_timer_entry_values`) on
   shell dumpsys power | grep -i wakefulness
   ```
   Expected: `sleep-10` shows the Sleep tile at 10 min; `warning` shows "Sleeping in 1 min · The TV will turn off" with the OK/Back key caps; `extended` shows no pill; the last line shows `Asleep` (the emulator went to standby). Check the PNGs, then send the user the video and PNGs before Step 2.
-- [ ] **Step 2: Verify on the TV** (TV free?).
+- [x] **Step 2: Verify on the TV** (TV free?).
   - Set a 10-min sleep. The tile shows the minutes left, and Up shows 15 min.
   - To test without waiting, use Step 1's `DEBUG_SLEEP` broadcast.
   - The last-minute pill appears. OK gives "+10 min" and the countdown jumps. Run it again, press Back: the pill doesn't come back, and the TV goes to standby at zero.
   - Set a 10-min sleep, turn the TV off with the power button, and turn it on again. Expected: it stays on, and the Sleep tile shows Off.
   - Set a 10-min sleep, press Blue (picture off), then `DEBUG_SLEEP` 65000. Expected: the timer still runs (the TV goes to standby at zero), so picture-off doesn't cancel it.
-- [ ] **Step 3: Commit** `"Sleep timer runtime and standby"`.
+- [x] **Step 3: Commit** `"Sleep timer runtime and standby"`.
+  **Result (2026-11-03):** emulator demo and all four TV checks passed: 10 → 15 min with the right ▲/▼ steps while counting down; the warning with OK/Back key caps, OK extended by 15, Back dismissed and the TV went to standby at zero (sleep reason `accessibility`); the power button cancelled a running timer; picture off didn't. Builder's calls: the key caps and the moon icon are extra `PillView.show` parameters (`icon`, `keys`), not `Effect.Pill` fields. Fix from the TV: the TV wakes with the picture on but keeps `power_picture_off` at 0, and writing 0 over 0 does nothing, so the next Blue did nothing; the screen-off receiver now writes 1.
 
 ### Task 10: Release build, setup notes, hand-over
 

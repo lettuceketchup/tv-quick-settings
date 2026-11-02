@@ -13,6 +13,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -30,6 +32,8 @@ class QuickService : AccessibilityService() {
     private var simView: SimView? = null
     private val handler = Handler(Looper.getMainLooper())
     private val timeout = Runnable { controller.timeoutClose(); render() }
+    private var sleepEndAt = 0L // elapsedRealtime; 0 = off
+    private val sleepEvents = mutableListOf<Runnable>()
 
     // The TV changes values itself (each picture mode keeps its own backlight, and its menu can change any key),
     // and late: a fixed 300 ms re-read after a picture_mode write still saw the old mode's backlight.
@@ -46,12 +50,25 @@ class QuickService : AccessibilityService() {
             when (intent.action) {
                 DEBUG_STANDBY -> Log.d(TAG, "standby: " + performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN))
                 // Emulator demos: injected keys don't reach onKeyEvent there, so scripts press keys through here.
+                DEBUG_SLEEP -> schedule(intent.getIntExtra("ms", 65_000).toLong())
                 DEBUG_KEY -> {
                     val code = KeyEvent.keyCodeFromString(intent.getStringExtra("key") ?: return)
                     handleKey(code, true, 0)
                     handleKey(code, false, intent.getLongExtra("hold", 100))
                 }
             }
+        }
+    }
+
+    // The power button's standby. Picture off may send it too while the TV stays interactive; that keeps the timer.
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (getSystemService(PowerManager::class.java).isInteractive) return
+            cancelSleep()
+            // The TV wakes with the picture on but keeps power_picture_off at 0, and a later write of 0 over 0 does nothing.
+            write(KEY_SCREEN_OFF, 1)
+            controller.screenWentOff()
+            render()
         }
     }
 
@@ -71,8 +88,9 @@ class QuickService : AccessibilityService() {
         for (k in listOf(KEY_BACKLIGHT, KEY_WARMTH, KEY_PICTURE, KEY_SOUND, KEY_OUTPUT)) {
             contentResolver.registerContentObserver(Settings.Global.getUriFor(k), false, observer)
         }
+        registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         if (BuildConfig.DEBUG) {
-            registerReceiver(debugReceiver, IntentFilter(DEBUG_STANDBY).apply { addAction(DEBUG_KEY) })
+            registerReceiver(debugReceiver, IntentFilter(DEBUG_STANDBY).apply { addAction(DEBUG_KEY); addAction(DEBUG_SLEEP) })
         }
     }
 
@@ -96,6 +114,7 @@ class QuickService : AccessibilityService() {
     fun handleKey(keyCode: Int, down: Boolean, heldMs: Long): Boolean {
         val key = keyOf(keyCode)
         if (!down && (key == Key.MENU || key in COLOURS)) refresh()
+        updateSleepLeft()
         val consumed = controller.onKey(key, down, heldMs)
         drain()
         render()
@@ -110,10 +129,11 @@ class QuickService : AccessibilityService() {
         controller.effects.clear()
         for (e in effects) when (e) {
             is Effect.Write -> write(e.key, e.raw)
-            is Effect.Pill -> pill.show(e)
+            is Effect.Pill -> if (!controller.state.warning) pill.show(e)
             Effect.HidePill -> pill.hide()
             is Effect.SavePresets -> prefs().edit().putString("presets", formatPresets(e.presets)).apply()
-            is Effect.SetSleep, is Effect.ExtendSleep -> {} // TODO Task 8: sleep timer
+            is Effect.SetSleep -> { controller.sleepStartedMin = e.minutes; schedule(e.minutes * 60_000L) }
+            is Effect.ExtendSleep -> schedule(sleepEndAt + e.minutes * 60_000L - SystemClock.elapsedRealtime())
         }
         if (effects.any { it is Effect.Write }) updateSim()
     }
@@ -141,7 +161,53 @@ class QuickService : AccessibilityService() {
         render()
     }
 
-    private fun render() = bar.render(controller.state, controller, tiles)
+    // Posts each sleep event once (reminders, the last-minute warning, standby); no tick loop. msLeft <= 0 cancels.
+    // ponytail: in-memory timer, gone if the service restarts; persist sleepEndAt if restarts turn out to happen.
+    private fun schedule(msLeft: Long) {
+        cancelSleep()
+        if (msLeft <= 0) return
+        sleepEndAt = SystemClock.elapsedRealtime() + msLeft
+        val started = controller.sleepStartedMin
+        for (m in remindersAhead(started, msLeft)) {
+            post(msLeft - m * 60_000L) { pill.show(Effect.Pill("Sleeping in $m min", "Sleep timer", null, 3000), R.drawable.ic_sleep) }
+        }
+        post(msLeft - 60_000) {
+            controller.showSleepWarning()
+            render()
+            pill.show(Effect.Pill("Sleeping in 1 min", "The TV will turn off", null, 0), R.drawable.ic_sleep,
+                listOf("OK" to "+${extensionMin(started)} min", "Back" to "Dismiss"))
+        }
+        post(msLeft) {
+            controller.clearSleepWarning()
+            pill.hide()
+            cancelSleep()
+            render()
+            Log.d(TAG, "sleep: standby " + performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN))
+        }
+        render()
+    }
+
+    private fun post(delayMs: Long, block: () -> Unit) {
+        val r = Runnable(block)
+        sleepEvents += r
+        handler.postDelayed(r, delayMs.coerceAtLeast(0))
+    }
+
+    private fun cancelSleep() {
+        sleepEvents.forEach(handler::removeCallbacks)
+        sleepEvents.clear()
+        sleepEndAt = 0
+        updateSleepLeft()
+    }
+
+    private fun updateSleepLeft() {
+        controller.sleepLeftMin = if (sleepEndAt == 0L) 0 else minutesLeft(sleepEndAt - SystemClock.elapsedRealtime())
+    }
+
+    private fun render() {
+        updateSleepLeft()
+        bar.render(controller.state, controller, tiles)
+    }
 
     private fun updateSim() {
         simView?.update(read(KEY_BACKLIGHT, 100), read(KEY_WARMTH, WARMTH_STANDARD), read(KEY_SCREEN_OFF, 1) == 0)
@@ -152,6 +218,7 @@ class QuickService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         contentResolver.unregisterContentObserver(observer)
+        unregisterReceiver(screenOffReceiver)
         if (BuildConfig.DEBUG) unregisterReceiver(debugReceiver)
         super.onDestroy()
     }
@@ -164,6 +231,7 @@ class QuickService : AccessibilityService() {
         const val TAG = "QuickService"
         const val DEBUG_STANDBY = "io.github.lettuceketchup.tvqs.DEBUG_STANDBY"
         const val DEBUG_KEY = "io.github.lettuceketchup.tvqs.DEBUG_KEY"
+        const val DEBUG_SLEEP = "io.github.lettuceketchup.tvqs.DEBUG_SLEEP"
         const val BAR_TIMEOUT_MS = 8000L
         const val MATCH = WindowManager.LayoutParams.MATCH_PARENT
     }
