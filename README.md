@@ -2,7 +2,7 @@
 
 A quick settings overlay for Android TV: press a remote button in any app (YouTube, Netflix, HDMI) and a translucent bar opens at the bottom of the screen with the picture and sound settings used most, so changing backlight in the evening doesn't mean digging through Settings.
 
-Built first for the Haier Android TV in [tv-debloat](https://github.com/lettuceketchup/tv-debloat) (this repo is a submodule there), whose stock quick menu only works on HDMI/Live TV and only offers picture mode.
+Built first for the Haier Android TV in `tv-debloat` (a local project, not on GitHub) (this repo is a submodule there), whose stock quick menu only works on HDMI/Live TV and only offers picture mode.
 
 Status: **design stage.** Nothing built yet.
 
