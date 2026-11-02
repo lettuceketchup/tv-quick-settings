@@ -1,11 +1,13 @@
 package io.github.lettuceketchup.tvqs
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.ClipDrawable
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -56,7 +58,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
             setPadding(dm.widthPixels * 3 / 100, 0, dm.widthPixels * 3 / 100, dm.heightPixels * 5 / 100)
             addView(paneHolder, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = gap })
             addView(FrameLayout(ctx).apply {
-                background = rounded(0x99000000.toInt(), 13)
+                background = rounded(0xBF000000.toInt(), 14) // the corner pill's 75% black
                 setPadding(0, pad, 0, pad)
                 addView(scroll, LayoutParams(MATCH, WRAP).apply { leftMargin = chev; rightMargin = chev })
                 addView(chevLeft, LayoutParams(chev, px(18), Gravity.START or Gravity.CENTER_VERTICAL))
@@ -119,16 +121,21 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
     }
 
     private inner class TileView(val t: Tile) : LinearLayout(context) {
-        private val plain = rounded(0x1FFFFFFF, 10).apply { setStroke(px(1), 0x80FFFFFF.toInt()) }
+        private val plain = rounded(0x14FFFFFF, 10)
         private val solid = rounded(Color.WHITE, 10)
         private val icon = image(ICONS.getValue(t.id), Color.WHITE)
         private val name = text(t.label, NAME_SP)
+        private val under = text(t.label, NAME_SP).apply { alpha = 0.7f } // the name below the icon when unfocused
         private val hint = text(HINT, HINT_SP)
-        // Level body: number, and beside it the segments with ▲ above and ▼ below when focused.
-        private val number = text("", NUMBER_SP).apply { typeface = Typeface.DEFAULT_BOLD }
+        // Level: a thin level bar as in the pill, beside the icon when unfocused and under the number when focused
+        // (stacking it under the name made the whole bar taller). ▲▼ beside the name when focused.
+        private val number = text("", NUMBER_SP)
         private val up = arrow(true)
-        private val segments = Segments(context)
         private val down = arrow(false)
+        private val lightBar = levelBar(Color.WHITE)
+        private val darkBar = levelBar(DARK)
+        private val headBar = View(context).apply { background = lightBar }
+        private val bar = View(context).apply { background = darkBar }
         // Other bodies: value at the bottom; when focused, ▲ the option above and ▼ the one below, each blank at an end.
         private val above = ArrowLine(true)
         private val value = text("", VALUE_SP)
@@ -143,20 +150,22 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
                 addView(icon, LayoutParams(px(ICON), px(ICON)).apply { marginEnd = px(6) })
                 addView(name, LayoutParams(0, WRAP, 1f))
                 addView(hint, LayoutParams(WRAP, WRAP).apply { marginStart = px(6) })
+                if (t is LevelTile) {
+                    addView(headBar, LayoutParams(0, px(4), 1f).apply { marginStart = px(4) })
+                    addView(up, LayoutParams(px(10), px(8)).apply { marginStart = px(6) })
+                    addView(down, LayoutParams(px(10), px(8)).apply { marginStart = px(3) })
+                }
             })
             addView(if (t is LevelTile) LinearLayout(context).apply {
+                orientation = VERTICAL
                 gravity = Gravity.BOTTOM
-                addView(number, LayoutParams(0, WRAP, 1f))
-                addView(LinearLayout(context).apply {
-                    orientation = VERTICAL
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    addView(up, LayoutParams(px(10), px(8)))
-                    addView(segments, LayoutParams(px(10), 0, 1f).apply { topMargin = px(2); bottomMargin = px(2) })
-                    addView(down, LayoutParams(px(10), px(8)))
-                }, LayoutParams(WRAP, MATCH))
+                addView(under)
+                addView(number)
+                addView(bar, LayoutParams(MATCH, px(4)).apply { topMargin = px(6); bottomMargin = px(4) })
             } else LinearLayout(context).apply {
                 orientation = VERTICAL
                 gravity = Gravity.BOTTOM
+                addView(under)
                 addView(above)
                 addView(value)
                 addView(below)
@@ -172,9 +181,15 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
                 layoutParams = (layoutParams as LayoutParams).apply { width = if (focused) focusW else tileW; height = if (focused) focusH else tileH }
                 icon.setColorFilter(fg)
                 for (tv in listOf(name, hint, number, value)) tv.setTextColor(fg)
+                name.visibility = if (focused) VISIBLE else GONE
+                under.visibility = if (focused) GONE else VISIBLE
+                headBar.visibility = if (focused) GONE else VISIBLE
+                bar.visibility = if (focused) VISIBLE else GONE
+                number.textSize = if (focused) NUMBER_SP else VALUE_SP
+                number.typeface = if (focused) Typeface.DEFAULT_BOLD else MEDIUM
                 up.setColorFilter(fg)
                 down.setColorFilter(fg)
-                value.typeface = if (focused) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                value.typeface = if (focused) Typeface.DEFAULT_BOLD else MEDIUM
                 hint.visibility = if (focused && t is ModeTile && t.hasPane) VISIBLE else GONE
             }
             val v = c.valueOf(t.id)
@@ -182,7 +197,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
                 is LevelTile -> {
                     val level = v ?: 0
                     number.set("$level")
-                    segments.set((level + BACKLIGHT_STEP / 2) / BACKLIGHT_STEP, fg)
+                    for (d in listOf(lightBar, darkBar)) d.level = level.coerceIn(0, 100) * 100 // ClipDrawable's level is 0–10000
                     up.visibility = if (!focused) GONE else if (level < 100) VISIBLE else INVISIBLE
                     down.visibility = if (!focused) GONE else if (level > 0) VISIBLE else INVISIBLE
                 }
@@ -244,7 +259,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
 
         init {
             orientation = VERTICAL
-            background = rounded(0xD9000000.toInt(), 10)
+            background = rounded(0xBF000000.toInt(), 14)
             setPadding(px(4), px(4), px(4), px(4))
             rows.forEach { addView(it.first) }
         }
@@ -275,6 +290,8 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
 
     private fun image(res: Int, color: Int) = ImageView(context).apply { setImageResource(res); setColorFilter(color) }
     private fun arrow(up: Boolean) = image(R.drawable.ic_arrow, Color.WHITE).apply { if (!up) rotation = 180f }
+    private fun levelBar(color: Int) =
+        LayerDrawable(arrayOf(ColorDrawable(color and 0x00FFFFFF or 0x40000000), ClipDrawable(ColorDrawable(color), Gravity.START, ClipDrawable.HORIZONTAL)))
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply { setColor(color); cornerRadius = px(radiusDp).toFloat() }
 
     private fun paint(sp: Float, bold: Boolean) = Paint().apply {
@@ -295,36 +312,12 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         const val HINT_SP = 11f
         const val NUMBER_SP = 22f
         const val HINT = "OK …"
+        val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         val ICONS = mapOf(
             TileId.BACKLIGHT to R.drawable.ic_backlight, TileId.WARMTH to R.drawable.ic_warmth,
             TileId.PRESET to R.drawable.ic_preset, TileId.PICTURE to R.drawable.ic_picture,
             TileId.SOUND to R.drawable.ic_sound, TileId.OUTPUT to R.drawable.ic_output,
             TileId.SLEEP to R.drawable.ic_sleep, TileId.SCREEN_OFF to R.drawable.ic_screen_off,
         )
-    }
-}
-
-// Backlight's segments, bottom up: filled ones solid, the rest faint.
-private class Segments(ctx: Context) : View(ctx) {
-    private val paint = Paint()
-    private var filled = 0
-    private var color = Color.WHITE
-
-    fun set(filled: Int, color: Int) {
-        if (filled == this.filled && color == this.color) return
-        this.filled = filled
-        this.color = color
-        invalidate()
-    }
-
-    override fun onDraw(c: Canvas) {
-        val n = 100 / BACKLIGHT_STEP
-        val g = resources.displayMetrics.density
-        val h = (height - (n - 1) * g) / n
-        for (i in 0 until n) {
-            paint.color = if (i < filled) color else color and 0x00FFFFFF or 0x40000000
-            val top = height - (i + 1) * h - i * g
-            c.drawRect(0f, top, width.toFloat(), top + h, paint)
-        }
     }
 }
