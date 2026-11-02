@@ -6,7 +6,7 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 
 ## Next steps
 
-1. Finish the design with the user (superpowers:brainstorming), including research on other brands' quick menus, and write it to `docs/superpowers/specs/`.
+1. Design: done, see `docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md`.
 2. Plan (superpowers:writing-plans), then install the build tools (JDK + Android command-line tools) and build.
 
 ## TV access
