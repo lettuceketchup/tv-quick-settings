@@ -1,6 +1,6 @@
 # TV Quick Settings: design
 
-Date: 2026-11-02. Status: design and look agreed with the user (mocks done). Next: implementation plan.
+Date: 2026-11-02. Status: design and look agreed with the user (mocks done). TV tests done (Task 0, see `docs/haier-tests.md`): Blue light became Warmth; Dialogue and Ambient were dropped.
 
 ## Why
 
@@ -31,16 +31,16 @@ Success: from any app, one press of MENU opens a bar, Up/Down dims the screen li
 
 ## Remote buttons
 
-The remote is a Haier HTR-U27E. The key codes below are the standard Android ones and still need to be confirmed on the TV.
+The remote is a Haier HTR-U27E (Bluetooth). Its raw codes are in `docs/haier-tests.md`; the Android keycodes of MENU, the colour buttons and FAV are confirmed by the app's own key log in the first on-TV build.
 
 | Button | Action |
 |---|---|
-| MENU, short press | Open the bar; if it's open, close it. Everywhere, including HDMI/Live TV (replaces Haier's HDMI menu, which the user doesn't need). |
-| MENU, long press | Open Settings, the same screen the long press opens today. The app opens it itself, because once the press is caught it can't be passed back to the TV. Find the exact screen on the TV. |
+| MENU (≡), short press | Open the bar; if it's open, close it. Everywhere, including HDMI/Live TV (replaces Haier's HDMI menu, which the user doesn't need). Act on release, and only if it wasn't held (no key repeat), because a long press holds this key down for about 3 s first. |
+| MENU, long press | Unchanged. After about 3 s the remote itself sends a different key, which opens Settings (`com.android.tv.settings/.MainSettings`). The app lets that key through and does nothing on a long MENU hold. |
 | Red | Night preset |
 | Green | Evening preset |
 | Yellow | Day preset |
-| Long press of Red/Green/Yellow | Save the current backlight + blue light into that preset (like a car radio's preset buttons). *My call; the mocks may change it.* |
+| Long press of Red/Green/Yellow | Save the current backlight + warmth into that preset (like a car radio's preset buttons). *My call; the mocks may change it.* |
 | Blue | Screen off (the sound keeps playing). Any button turns the picture back on; that press is swallowed so it doesn't also pause or skip the video (*my call*). |
 | Everything else | Unchanged. |
 
@@ -48,7 +48,7 @@ MENU and the colour buttons are taken over in every app with no exceptions. The 
 
 If the key log shows the firmware takes MENU before the app can see it, FAV opens the bar instead (*my call*; FAV and INFO were the spare buttons discussed). If a colour button can't be caught, its preset is only reachable from the bar.
 
-Every button action that changes a setting shows the **corner pill**: a small translucent box at the top right with an icon, a title, one line of detail and a thin level bar, e.g. "Night / Backlight 20 · Blue light 75". It fades after about 2 seconds and doesn't take focus.
+Every button action that changes a setting shows the **corner pill**: a small translucent box at the top right with an icon, a title, one line of detail and a thin level bar, e.g. "Night / Backlight 20 · Warm". It fades after about 2 seconds and doesn't take focus.
 
 ## The bar
 
@@ -64,29 +64,28 @@ Look and behaviour were settled with the user through interactive mocks (the las
 
 ### Tile types
 
-- **Level** (Backlight, Blue light): the value as a number, with a short **vertical segmented bar** beside it. Each segment is one step. The focused tile shows ▲ above the bar and ▼ below it, and hides an arrow at its limit.
+- **Level** (Backlight): the value as a number, with a short **vertical segmented bar** beside it. Each segment is one step. The focused tile shows ▲ above the bar and ▼ below it, and hides an arrow at its limit.
   - Backlight: steps of 10, so 10 segments (0–100).
-  - Blue light: steps of a quarter, so 4 segments (off, 25, 50, 75, 100 of the key's range).
-- **Mode** (Preset, Picture, Sound, Dialogue, Output): the focused tile shows three lines, "▲ previous option", the **current option**, then "▼ next option". Modes **don't wrap**: at either end that line is blank, so a two-option mode like Dialogue never shows the same option on both sides.
-  - Picture, Sound and Output have an **"OK ⋯"** hint. OK opens a **list pane** above the tile with every option and a tick on the current one. Up/Down moves the highlight, OK picks and Back closes the pane.
-  - Preset and Dialogue have no pane, because Up/Down covers their few options.
+- **Mode** (Warmth, Preset, Picture, Sound, Output): the focused tile shows three lines, "▲ previous option", the **current option**, then "▼ next option". Modes **don't wrap**: at either end that line is blank, so a two-option mode like Output never shows the same option on both sides.
+  - Picture and Sound have an **"OK ⋯"** hint. OK opens a **list pane** above the tile with every option and a tick on the current one. Up/Down moves the highlight, OK picks and Back closes the pane.
+  - Warmth, Preset and Output have no pane, because Up/Down covers their few options.
 - **Sleep**: see "Sleep timer" below. No pane.
-- **Action** (Ambient, Screen off): the focused tile says "Press OK".
+- **Action** (Screen off): the focused tile says "Press OK".
 - **Edit**: always the last tile, and it can't be hidden. See "Editing the bar".
 
 ### Tiles (default order)
 
 1. **Backlight**
-2. **Blue light**
+2. **Warmth**: the TV's own Colour Temperature, User / Cool / Standard / Warm (`picture_color_temperature` 0 / 1 / 2 / 3). This is the night mode: the TV has no working blue-light key, and its "Warm" is what other brands sell as a low-blue mode. Research says total brightness matters more than colour for sleep, so Backlight stays first.
 3. **Preset**: Day / Evening / Night, applied as you move.
-4. **Picture**: the TV's own picture modes, with the TV's names. The app only switches between modes and never edits what's inside one. Tuning a mode is done in the TV's Settings. If the key doesn't apply live, the tile opens the TV's own picture mode menu instead.
+4. **Picture**: the TV's own picture modes, with the TV's names. The app only switches between modes and never edits what's inside one. Tuning a mode is done in the TV's Settings.
 5. **Sound**: the TV's own sound modes, same rule as Picture.
-6. **Dialogue**: Off / On.
-7. **Output**: speakers / Bluetooth / ARC, or opens the TV's sound output screen if it can't be switched directly.
-8. **Sleep**
-9. **Ambient**: OK starts the TV's own screensaver now (whatever is set in Android's screensaver settings), and any button returns. Drop this tile if the TV already has a button or combination that does the same; check during the key tests.
-10. **Screen off**: OK turns the picture off and the sound keeps playing. Any button turns it back on.
-11. **Edit**
+6. **Output**: TV Speakers / External audio system (HDMI ARC).
+7. **Sleep**
+8. **Screen off**: OK turns the picture off and the sound keeps playing. Any button turns it back on.
+9. **Edit**
+
+Dropped after the TV tests: **Blue light** (the key does nothing visible), **Dialogue** (no such option on this TV), and **Ambient** (Projectivy already starts the screensaver on a Back double press).
 
 ### Editing the bar
 
@@ -102,7 +101,7 @@ Look and behaviour were settled with the user through interactive mocks (the las
 - Steps: 10, 15, 30, 60, 90, 120 min. **Up = longer, Down = shorter.**
 - **When off**, the tile shows "Off" with "▲ 10 min".
 - **Once running**, the main text is the **actual time left** ("23 min left"), and the ▲/▼ lines show the next step above and below the time left (e.g. 30 min / 15 min). Pressing one restarts the timer at that value. Down from below the smallest step shows **Off**, which cancels the timer. Unfocused, the tile shows only the time left.
-- **When it reaches zero**, the TV goes to standby, the same as pressing power, and it wakes the usual way. If the Haier has its own sleep-timer setting, use it; otherwise the app keeps the countdown and needs a way to put the TV in standby (find it during the tests).
+- **When it reaches zero**, the TV goes to standby, the same as pressing power, and it wakes the usual way. The Haier's own sleep timer can't be started by writing its key, so the app keeps the countdown and puts the TV in standby itself (method checked in the build).
 - **Reminders:** a short corner pill (about 3 s), "Sleeping in 30 min", when the time left passes 6 h, 2 h, 1 h, 30, 15 and 5 min. Only the steps shorter than the timer's length fire.
 - **Last minute:** the pill stays up and says "Sleeping in 1 min · The TV will turn off" with two clearly shown choices:
   - **OK** extends the timer by 15 min, or by the timer's original length if that was shorter, so a 10‑min timer offers "+10 min".
@@ -111,10 +110,10 @@ Look and behaviour were settled with the user through interactive mocks (the las
 
 ## Presets
 
-- Three presets: Day, Evening, Night. Each holds **backlight and blue light only**. Picture mode and sound are never touched by a preset.
-- Starting values on the tick grid (*my call*, adjust after testing): Day = backlight 100, blue light off; Evening = 60, 50; Night = 20, 75.
+- Three presets: Day, Evening, Night. Each holds **backlight and warmth only**. Picture mode and sound are never touched by a preset.
+- Starting values (*my call*, adjust after testing): Day = backlight 100, Standard; Evening = 60, Warm; Night = 20, Warm.
 - Stored in the app's own storage, so they survive reboots.
-- A preset writes the keys once, to whatever input and picture mode are current. If the TV turns out to keep a separate backlight per input or per picture mode, pressing the preset again after switching applies it there too. The app doesn't try to write every input at once (*my call*; revisit if it feels broken).
+- A preset writes the keys once, to whatever input and picture mode are current. The TV keeps a separate backlight per input and per picture mode (tested), so pressing the preset again after switching applies it there too. The app doesn't try to write every input at once (*my call*; revisit if it feels broken).
 
 ## How it works
 
@@ -126,19 +125,19 @@ Look and behaviour were settled with the user through interactive mocks (the las
 
 ### Setting keys to confirm on the TV
 
-Only `picture_backlight` has been tested (writing it dims the screen live). Every other tile depends on a test first: write the value, ask the user what changed, then restore the old value. Run the tests only when nobody is watching.
+Tested on 2026-11-02 (Task 0). Details, raw codes and logs: `docs/haier-tests.md`. Every write was restored and logged in `../tvs/haier/changes.md`.
 
-| Tile | Candidate key | What to learn |
-|---|---|---|
-| Backlight | `picture_backlight` (0–100) | Tested. Also check whether HDMI and apps keep separate values, and whether the value is per picture mode. |
-| Blue light | `picture_blue_light` | Range, and whether it applies live. |
-| Picture mode | `picture_mode` | Value → name mapping (change it in the TV menu and read the key), and whether writing it applies live. |
-| Sound mode | `sound_style` | Value → name mapping; live? |
-| Dialogue boost | `sound_dialog_enhancement` | Live? |
-| Sound output | `sound_digital_output`? unknown | It may not be switchable by key; fallback is to open the TV's screen. |
-| Sleep timer | unknown (the dump only listed picture/sound keys) | Look for a Haier sleep-timer key or intent. Fallback: the app counts down itself and puts the TV to sleep (method to find), or opens the TV's sleep timer screen. |
-| Ambient | none: start the screensaver (e.g. SystemUI's `Somnambulator` activity) | Whether it starts on the Haier, and whether a remote button or combination already does this; drop the tile if so. |
-| Screen off | `power_picture_off`? | Whether it turns the panel off with sound playing. Fallback (*my call*): a full black overlay plus backlight 0, both undone on the next press. |
+| Tile | Candidate key | What to learn | Result |
+|---|---|---|---|
+| Backlight | `picture_backlight` (0–100) | Tested. Also check whether HDMI and apps keep separate values, and whether the value is per picture mode. | **Keep.** Live. Separate per input and per picture mode; the key reads and writes the current one. |
+| Blue light | `picture_blue_light` | Range, and whether it applies live. | **Dropped.** Stored, but no visible change. Replaced by **Warmth**: `picture_color_temperature` 0 User, 1 Cool, 2 Standard, 3 Warm (applied by the firmware). |
+| Picture mode | `picture_mode` | Value → name mapping (change it in the TV menu and read the key), and whether writing it applies live. | **Keep.** Live. 0 User, 2 Sport, 3 Vivid, 7 Standard, 9 Movie, 10 Game, 11 Energy Saving; list in menu order (User, Standard, Vivid, Sport, Movie, Game, Energy Saving). **Write only these values**: 12/13 corrupted the User mode. |
+| Sound mode | `sound_style` | Value → name mapping; live? | **Keep.** Live. 0 User, 1 Standard, 2 Night, 3 Sports, 4 Movie, 5 Music, 6 News. |
+| Dialogue boost | `sound_dialog_enhancement` | Live? | **Dropped.** No such option in the TV's menus. |
+| Sound output | `sound_digital_output`? unknown | It may not be switchable by key; fallback is to open the TV's screen. | **Keep.** `hdmi_system_audio_control_enabled`: 0 TV Speakers, 1 External audio system (ARC). |
+| Sleep timer | unknown (the dump only listed picture/sound keys) | Look for a Haier sleep-timer key or intent. Fallback: the app counts down itself and puts the TV to sleep (method to find), or opens the TV's sleep timer screen. | **Fallback: the app counts down** and puts the TV in standby. `tv_timer_sleep_timer_entry_values` only mirrors the menu; writing it starts nothing. |
+| Ambient | none: start the screensaver (e.g. SystemUI's `Somnambulator` activity) | Whether it starts on the Haier, and whether a remote button or combination already does this; drop the tile if so. | **Dropped.** Projectivy's Back double press already starts `Somnambulator`. (It shows nothing until a screensaver is enabled again: Backdrop was disabled by the debloat.) |
+| Screen off | `power_picture_off`? | Whether it turns the panel off with sound playing. Fallback (*my call*): a full black overlay plus backlight 0, both undone on the next press. | **Keep.** `power_picture_off` 0 = picture off, 1 = on. Tested live. |
 
 A tile whose setting can't be changed live, and has no working fallback, is dropped rather than half-working.
 
@@ -155,7 +154,8 @@ To undo: turn the service off, or uninstall the app. Settings the app changed st
 
 - **Firmware may handle some buttons before the app sees them.** Confirm with a read-only key log (`getevent`/logcat) while the user presses MENU and the colour buttons.
 - **Accessibility services can be switched off** by the system after updates or crashes. If that happens, re-enable over adb. A self-check inside the app is not planned.
-- The MENU long-press Settings screen has to be found and opened by intent.
+- The colour buttons all arrive as the same Linux key (`KEY_UNKNOWN`) and differ only by HID usage. If Android doesn't map them to different keycodes, the presets are only reachable from the bar.
+- Projectivy's accessibility service also filters keys. Both services see each press; check in the first on-TV build that neither eats the other's keys.
 
 ## Left to the builder
 

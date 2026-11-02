@@ -4,7 +4,7 @@ A quick settings overlay for Android TV: press a remote button in any app (YouTu
 
 Built first for the Haier Android TV in `tv-debloat` (a local project, not on GitHub) (this repo is a submodule there), whose stock quick menu only works on HDMI/Live TV and only offers picture mode.
 
-Status: **design done** ([spec](docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md)). Nothing built yet.
+Status: **design and TV tests done** ([spec](docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md), [TV tests](docs/haier-tests.md)). Nothing built yet.
 
 ## What the user described (2026-11-02)
 
