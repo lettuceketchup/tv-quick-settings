@@ -17,7 +17,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 // The bar: a scrolling row of tiles along the bottom, and the list pane above the focused tile.
-// Nothing here takes focus: the Controller owns it, and render() draws its state from scratch.
+// Nothing here takes focus: the Controller owns it, and render() draws its state.
+// Views are built once and updated in place: rebuilding them per key took 65-190 ms on the TV.
 class BarView(ctx: Context) : FrameLayout(ctx) {
     private fun px(dp: Int) = (dp * resources.displayMetrics.density).toInt()
     private val pad = px(10)
@@ -44,7 +45,9 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
     private var tileH = 0
     private val focusW get() = tileW * 13 / 10
     private val focusH get() = tileH * 115 / 100
-    private var wasOpen = false
+    private var tileViews = emptyList<TileView>()
+    private var pane: Pane? = null
+    private var last: Any? = null
 
     init {
         val dm = resources.displayMetrics
@@ -64,14 +67,19 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
     }
 
     fun render(state: UiState, c: Controller, tiles: Map<TileId, Tile>) {
+        // Key UPs and repeated refreshes change nothing on screen; skip them.
+        val snapshot = state to TileId.entries.map { c.valueOf(it) }
+        if (snapshot == last) return
+        val opening = state.barOpen && (last as? Pair<*, *>)?.first.let { it !is UiState || !it.barOpen }
+        last = snapshot
+        // Built on the first render (at service start, bar hidden), so the first MENU doesn't pay for it.
+        if (tileViews.isEmpty()) {
+            measureTiles(tiles.values)
+            tileViews = TileId.entries.map { TileView(tiles.getValue(it)).also(row::addView) }
+        }
         visibility = if (state.barOpen) VISIBLE else GONE
-        val opening = state.barOpen && !wasOpen
-        wasOpen = state.barOpen
         if (!state.barOpen) return
-        if (tileW == 0) measureTiles(tiles.values)
-
-        row.removeAllViews()
-        TileId.entries.forEachIndexed { i, id -> row.addView(tile(tiles.getValue(id), c, i == state.focus)) }
+        tileViews.forEachIndexed { i, v -> v.update(c, i == state.focus) }
 
         // Centre the focused tile. All tiles before it are unfocused and the row's width never changes,
         // so the target is plain arithmetic, valid before this frame's layout.
@@ -79,11 +87,17 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         val x = (focusLeft + focusW / 2 - scroll.width / 2).coerceIn(0, maxOf(0, row.width - scroll.width))
         if (opening) scroll.scrollTo(x, 0) else scroll.smoothScrollTo(x, 0)
 
-        paneHolder.removeAllViews()
         val tile = tiles.getValue(TileId.entries[state.focus])
-        if (state.paneIndex != null && tile is ModeTile) {
-            paneHolder.addView(pane(tile, c, state.paneIndex), LayoutParams(focusW, WRAP).apply { leftMargin = chev + focusLeft - x })
+        if (state.paneIndex == null || tile !is ModeTile) {
+            if (pane != null) { paneHolder.removeAllViews(); pane = null }
+            return
         }
+        val p = pane?.takeIf { it.tile == tile } ?: Pane(tile).also {
+            paneHolder.removeAllViews()
+            paneHolder.addView(it, LayoutParams(focusW, WRAP).apply { leftMargin = chev + focusLeft - x })
+            pane = it
+        }
+        p.update(c, state.paneIndex)
     }
 
     private fun updateChevrons() {
@@ -104,97 +118,163 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         tileH = tall * 100 / 115 + 1
     }
 
-    private fun tile(t: Tile, c: Controller, focused: Boolean): View {
-        val fg = if (focused) DARK else Color.WHITE
-        val v = c.valueOf(t.id)
-        val body = when (t) {
-            is LevelTile -> level(v ?: 0, focused, fg)
-            is ModeTile -> {
-                val value = v ?: -1 // the Preset tile's value is already an index into its options
-                val i = t.options.indexOfFirst { it.value == value }
-                lines(modeLabel(t, value), stepMode(i, t.options.size, true)?.let { t.options[it].label },
-                    stepMode(i, t.options.size, false)?.let { t.options[it].label }, focused, fg)
-            }
-            SleepTile -> {
-                val left = v ?: 0
-                lines(if (left == 0) "Off" else "$left min left", nextLonger(left)?.let { "$it min" },
-                    nextShorter(left)?.let { if (it == 0) "Off" else "$it min" }, focused, fg)
-            }
-            is ActionTile -> lines(if (focused) "Press OK" else "", null, null, focused, fg)
-        }
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = if (focused) rounded(Color.WHITE, 10) else rounded(0x1FFFFFFF, 10).apply { setStroke(px(1), 0x80FFFFFF.toInt()) }
+    private inner class TileView(val t: Tile) : LinearLayout(context) {
+        private val plain = rounded(0x1FFFFFFF, 10).apply { setStroke(px(1), 0x80FFFFFF.toInt()) }
+        private val solid = rounded(Color.WHITE, 10)
+        private val icon = image(ICONS.getValue(t.id), Color.WHITE)
+        private val name = text(t.label, NAME_SP)
+        private val hint = text(HINT, HINT_SP)
+        // Level body: number, and beside it the segments with ▲ above and ▼ below when focused.
+        private val number = text("", NUMBER_SP).apply { typeface = Typeface.DEFAULT_BOLD }
+        private val up = arrow(true)
+        private val segments = Segments(context)
+        private val down = arrow(false)
+        // Other bodies: value at the bottom; when focused, ▲ the option above and ▼ the one below, each blank at an end.
+        private val above = ArrowLine(true)
+        private val value = text("", VALUE_SP)
+        private val below = ArrowLine(false)
+        private var focused: Boolean? = null
+
+        init {
+            orientation = VERTICAL
             setPadding(pad, pad, pad, pad)
             addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                addView(image(ICONS.getValue(t.id), fg), LinearLayout.LayoutParams(px(ICON), px(ICON)).apply { marginEnd = px(6) })
-                addView(text(t.label, NAME_SP, false, fg), LinearLayout.LayoutParams(0, WRAP, 1f))
-                if (focused && t is ModeTile && t.hasPane) addView(text(HINT, HINT_SP, false, fg), LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = px(6) })
+                addView(icon, LayoutParams(px(ICON), px(ICON)).apply { marginEnd = px(6) })
+                addView(name, LayoutParams(0, WRAP, 1f))
+                addView(hint, LayoutParams(WRAP, WRAP).apply { marginStart = px(6) })
             })
-            addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
-            layoutParams = LinearLayout.LayoutParams(if (focused) focusW else tileW, if (focused) focusH else tileH).apply { marginEnd = gap }
+            addView(if (t is LevelTile) LinearLayout(context).apply {
+                gravity = Gravity.BOTTOM
+                addView(number, LayoutParams(0, WRAP, 1f))
+                addView(LinearLayout(context).apply {
+                    orientation = VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    addView(up, LayoutParams(px(10), px(8)))
+                    addView(segments, LayoutParams(px(10), 0, 1f).apply { topMargin = px(2); bottomMargin = px(2) })
+                    addView(down, LayoutParams(px(10), px(8)))
+                }, LayoutParams(WRAP, MATCH))
+            } else LinearLayout(context).apply {
+                orientation = VERTICAL
+                gravity = Gravity.BOTTOM
+                addView(above)
+                addView(value)
+                addView(below)
+            }, LayoutParams(MATCH, 0, 1f))
+            layoutParams = LayoutParams(tileW, tileH).apply { marginEnd = gap }
+        }
+
+        fun update(c: Controller, focused: Boolean) {
+            val fg = if (focused) DARK else Color.WHITE
+            if (focused != this.focused) {
+                this.focused = focused
+                background = if (focused) solid else plain
+                layoutParams = (layoutParams as LayoutParams).apply { width = if (focused) focusW else tileW; height = if (focused) focusH else tileH }
+                icon.setColorFilter(fg)
+                for (tv in listOf(name, hint, number, value)) tv.setTextColor(fg)
+                up.setColorFilter(fg)
+                down.setColorFilter(fg)
+                value.typeface = if (focused) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                hint.visibility = if (focused && t is ModeTile && t.hasPane) VISIBLE else GONE
+            }
+            val v = c.valueOf(t.id)
+            when (t) {
+                is LevelTile -> {
+                    val level = v ?: 0
+                    number.set("$level")
+                    segments.set((level + BACKLIGHT_STEP / 2) / BACKLIGHT_STEP, fg)
+                    up.visibility = if (!focused) GONE else if (level < 100) VISIBLE else INVISIBLE
+                    down.visibility = if (!focused) GONE else if (level > 0) VISIBLE else INVISIBLE
+                }
+                is ModeTile -> {
+                    val raw = v ?: -1 // the Preset tile's value is already an index into its options
+                    val i = t.options.indexOfFirst { it.value == raw }
+                    lines(modeLabel(t, raw), stepMode(i, t.options.size, true)?.let { t.options[it].label },
+                        stepMode(i, t.options.size, false)?.let { t.options[it].label }, focused, fg)
+                }
+                SleepTile -> {
+                    val left = v ?: 0
+                    lines(if (left == 0) "Off" else "$left min left", nextLonger(left)?.let { "$it min" },
+                        nextShorter(left)?.let { if (it == 0) "Off" else "$it min" }, focused, fg)
+                }
+                is ActionTile -> lines(if (focused) "Press OK" else "", null, null, focused, fg)
+            }
+        }
+
+        private fun lines(text: String, aboveLabel: String?, belowLabel: String?, focused: Boolean, fg: Int) {
+            value.set(text)
+            above.set(aboveLabel, focused, fg)
+            below.set(belowLabel, focused, fg)
         }
     }
 
-    // Value at the bottom; when focused, ▲ the option above and ▼ the one below, each blank at an end.
-    private fun lines(value: String, above: String?, below: String?, focused: Boolean, fg: Int) = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.BOTTOM
-        if (focused) addView(arrowLine(true, above, fg))
-        addView(text(value, VALUE_SP, focused, fg))
-        if (focused) addView(arrowLine(false, below, fg))
-    }
+    private inner class ArrowLine(up: Boolean) : LinearLayout(context) {
+        private val arrow = arrow(up)
+        private val label = text("", ARROW_SP).apply { alpha = 0.7f }
 
-    private fun arrowLine(up: Boolean, label: String?, fg: Int) = LinearLayout(context).apply {
-        gravity = Gravity.CENTER_VERTICAL
-        visibility = if (label == null) INVISIBLE else VISIBLE
-        addView(arrow(up, fg), LinearLayout.LayoutParams(px(10), px(8)).apply { marginEnd = px(5) })
-        addView(text(label ?: "", ARROW_SP, false, fg).apply { alpha = 0.7f })
-    }
+        init {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(arrow, LayoutParams(px(10), px(8)).apply { marginEnd = px(5) })
+            addView(label)
+        }
 
-    // Number, and beside it a segmented bar with ▲ above and ▼ below when focused.
-    private fun level(v: Int, focused: Boolean, fg: Int) = LinearLayout(context).apply {
-        gravity = Gravity.BOTTOM
-        addView(text("$v", NUMBER_SP, true, fg), LinearLayout.LayoutParams(0, WRAP, 1f))
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            if (focused) addView(arrow(true, fg).apply { visibility = if (v < 100) VISIBLE else INVISIBLE }, LinearLayout.LayoutParams(px(10), px(8)))
-            addView(Segments(context, (v + BACKLIGHT_STEP / 2) / BACKLIGHT_STEP, fg), LinearLayout.LayoutParams(px(10), 0, 1f).apply { topMargin = px(2); bottomMargin = px(2) })
-            if (focused) addView(arrow(false, fg).apply { visibility = if (v > 0) VISIBLE else INVISIBLE }, LinearLayout.LayoutParams(px(10), px(8)))
-        }, LinearLayout.LayoutParams(WRAP, MATCH))
+        // Gone when unfocused, blank (but holding its line) at an end.
+        fun set(text: String?, focused: Boolean, fg: Int) {
+            visibility = if (!focused) GONE else if (text == null) INVISIBLE else VISIBLE
+            label.set(text ?: "")
+            label.setTextColor(fg)
+            arrow.setColorFilter(fg)
+        }
     }
 
     // Every option, a tick on the current one, the highlight inverted.
-    private fun pane(t: ModeTile, c: Controller, highlight: Int) = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        background = rounded(0xD9000000.toInt(), 10)
-        setPadding(px(4), px(4), px(4), px(4))
-        t.options.forEachIndexed { i, o ->
-            val fg = if (i == highlight) DARK else Color.WHITE
-            addView(LinearLayout(context).apply {
+    private inner class Pane(val tile: ModeTile) : LinearLayout(context) {
+        private val rows = tile.options.map { o ->
+            val tick = image(R.drawable.ic_tick, Color.WHITE)
+            val label = text(o.label, VALUE_SP)
+            val row = LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(pad - px(4), px(6), pad - px(4), px(6))
-                if (i == highlight) background = rounded(Color.WHITE, 7)
-                addView(image(R.drawable.ic_tick, fg).apply { visibility = if (o.value == c.valueOf(t.id)) VISIBLE else INVISIBLE },
-                    LinearLayout.LayoutParams(px(ICON), px(ICON)).apply { marginEnd = px(6) })
-                addView(text(o.label, VALUE_SP, i == highlight, fg))
-            })
+                addView(tick, LayoutParams(px(ICON), px(ICON)).apply { marginEnd = px(6) })
+                addView(label)
+            }
+            Triple(row, tick, label)
+        }
+        private val highlightBg = rounded(Color.WHITE, 7)
+
+        init {
+            orientation = VERTICAL
+            background = rounded(0xD9000000.toInt(), 10)
+            setPadding(px(4), px(4), px(4), px(4))
+            rows.forEach { addView(it.first) }
+        }
+
+        fun update(c: Controller, highlight: Int) {
+            rows.forEachIndexed { i, (row, tick, label) ->
+                val hi = i == highlight
+                val fg = if (hi) DARK else Color.WHITE
+                row.background = if (hi) highlightBg else null
+                tick.setColorFilter(fg)
+                tick.visibility = if (tile.options[i].value == c.valueOf(tile.id)) VISIBLE else INVISIBLE
+                label.setTextColor(fg)
+                label.typeface = if (hi) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            }
         }
     }
 
-    private fun text(s: String, sp: Float, bold: Boolean, color: Int) = TextView(context).apply {
+    // setText relayouts even when the text is the same.
+    private fun TextView.set(s: String) { if (text.toString() != s) text = s }
+
+    private fun text(s: String, sp: Float) = TextView(context).apply {
         text = s
         textSize = sp
-        setTextColor(color)
+        setTextColor(Color.WHITE)
         isSingleLine = true
         ellipsize = TextUtils.TruncateAt.END
-        if (bold) typeface = Typeface.DEFAULT_BOLD
     }
 
     private fun image(res: Int, color: Int) = ImageView(context).apply { setImageResource(res); setColorFilter(color) }
-    private fun arrow(up: Boolean, color: Int) = image(R.drawable.ic_arrow, color).apply { if (!up) rotation = 180f }
+    private fun arrow(up: Boolean) = image(R.drawable.ic_arrow, Color.WHITE).apply { if (!up) rotation = 180f }
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply { setColor(color); cornerRadius = px(radiusDp).toFloat() }
 
     private fun paint(sp: Float, bold: Boolean) = Paint().apply {
@@ -225,8 +305,17 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
 }
 
 // Backlight's segments, bottom up: filled ones solid, the rest faint.
-private class Segments(ctx: Context, private val filled: Int, private val color: Int) : View(ctx) {
+private class Segments(ctx: Context) : View(ctx) {
     private val paint = Paint()
+    private var filled = 0
+    private var color = Color.WHITE
+
+    fun set(filled: Int, color: Int) {
+        if (filled == this.filled && color == this.color) return
+        this.filled = filled
+        this.color = color
+        invalidate()
+    }
 
     override fun onDraw(c: Canvas) {
         val n = 100 / BACKLIGHT_STEP
