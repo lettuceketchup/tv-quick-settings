@@ -101,7 +101,7 @@ class QuickService : AccessibilityService() {
         render()
         handler.removeCallbacks(timeout)
         if (controller.state.barOpen) handler.postDelayed(timeout, BAR_TIMEOUT_MS)
-        Log.d(TAG, "key=$keyCode (${KeyEvent.keyCodeToString(keyCode)}) down=$down held=$heldMs consumed=$consumed")
+        Log.d(TAG, "key=$keyCode (${KeyEvent.keyCodeToString(keyCode)}) down=$down held=$heldMs consumed=$consumed ${controller.state}")
         return consumed
     }
 
