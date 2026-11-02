@@ -13,7 +13,8 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 5. Plan review: done 2026-11-02, applied to the plan and spec. The three passes are in `docs/superpowers/reviews/` (`2026-11-02-review-pass1.md` to `-pass3.md`). The user approved the four correctness fixes (H1–H4), the accepted ponytail cuts, dropping edit mode, and keeping long-press save, the list pane and drawn icons.
 6. Task 2 (tiles, steps, presets): done, committed. 14 unit tests in `TilesTest.kt`.
 7. Emulator demo added to the plan 2026-11-02 (Task 5a, and demo steps in Tasks 6–8; review in `docs/superpowers/reviews/2026-11-02-review-pass4.md`). The `haier_tv` emulator is installed; start it from a terminal tab. Use `adb -s emulator-5554`, never `adb -e` (that can hit the TV).
-8. **Next: execute the plan from Task 3.** Task 4 and Task 9 are intentionally empty.
+8. Task 3 (sleep timer maths): done, committed. 12 unit tests in `SleepMathTest.kt`.
+9. **Next: execute the plan from Task 5.** Task 4 and Task 9 are intentionally empty.
 
 ## TV access
 
