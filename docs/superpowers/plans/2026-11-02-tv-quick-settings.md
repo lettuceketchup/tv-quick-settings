@@ -26,7 +26,7 @@
 - Bar auto-closes after 8 s without a key press. Normal pills last 2 s, sleep reminders 3 s, and the last-minute pill stays until answered or the timer ends.
 - Copy is sentence case, e.g. "Sleeping in 1 min", "The TV will turn off", "Press OK", "OK ⋯".
 - Plan review (2026-11-02): `docs/superpowers/reviews/2026-11-02-review-pass1.md` to `-pass3.md` explain the changes below (H1–H4, M1–M4, P1–P4 refer to them).
-- **Emulator demo before the TV** (user, 2026-11-02): every task that changes what's on screen (6, 7, 8) runs its scripted demo on the `haier_tv` emulator after the build and before the TV install, and sends the user the video and screenshots with SendUserFile. The emulator is not a Haier: the Haier setting keys are seeded so the app reads sane values, and writes land in `Settings.Global` (the demo log shows them). From Task 6, a debug-only `SimView` imitates backlight, warmth and picture-off on a grey backdrop; it's an approximation of the panel, so say so with each demo. The panel is 4K, but Android draws at 1920×1080 (the only display mode, read from the TV 2026-11-02) and the TV upscales it 2×, so the emulator's layout matches but its text looks sharper than the TV's. Emulator commands always use `adb -s emulator-5554`, **never `adb -e`** (that means "the TCP/IP device", which is the TV when it's connected). Scripted keys go through `DEBUG_KEY` (Task 5a), so a demo doesn't exercise the key filter or pass-through; the TV checks do. The emulator itself, `avdmanager` and `sdkmanager` run in the user's terminal tab (AppData redirect, see Task 1 Step 2).
+- **Emulator demo before the TV** (user, 2026-11-02): Tasks 6, 7 and 8 each run a scripted demo on the `haier_tv` emulator after the build and before the TV install, and send the user the video and screenshots with SendUserFile. Task 5a has the details.
 
 ## Review Focus
 
@@ -299,16 +299,18 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
 
 **Found while setting up (2026-11-02):** on this emulator image, neither `adb shell input keyevent` nor `adb emu event send` reaches an accessibility service's `onKeyEvent`. The service was bound with key filtering, and the key log stayed empty. The image is a production build, so there's no root and no `sendevent`. Scripted keys therefore go through a debug broadcast, `DEBUG_KEY`, into the same `handleKey` the real keys use. A demo shows the bar, the pill and the values, but not the key filter itself or keys passing through to other apps; the TV checks cover those. A hold is just a number in the broadcast, so held presses get exact hold times.
 
+The emulator isn't a Haier: the Haier setting keys are seeded so the app reads sane values, and writes land in `Settings.Global`, where the demo reads them back. The emulator, `avdmanager` and `sdkmanager` run in the user's terminal tab (AppData redirect, see Task 1 Step 2). The TV's panel is 4K, but Android draws at 1920×1080 (the only display mode, read from the TV 2026-11-02) and the TV upscales it 2×. So the emulator's layout matches the TV's, but its text looks sharper.
+
 **Files:**
 - Modify: `QuickService.kt` (`handleKey` and `DEBUG_KEY`)
 - Create: `tools/demo.ps1`
-- Create: `demo/probe.txt` (this task's steps); Tasks 6–8 add `demo/task6.txt`, `demo/task7.txt` and `demo/task8.txt`
+- Tasks 6–8 add `demo/task6.txt`, `demo/task7.txt` and `demo/task8.txt` (this task's probe steps aren't kept)
 - Modify: `.gitignore` (add `demo/out/`)
 - Modify: `README.md` (a short "Try it on the emulator" section)
 
 **Interfaces:**
 - Produces: `QuickService.handleKey(keyCode: Int, down: Boolean, heldMs: Long): Boolean`. `onKeyEvent` calls it with `event.eventTime - event.downTime`. For now it only logs and returns `false`; Task 6 fills it in. It logs `key=<code> (<name>) down=<down> held=<ms> consumed=<result>` to `QuickService`, so the demo log shows what was consumed.
-- Produces: the debug-only `DEBUG_KEY` broadcast. Its extras are `code` (int) and `hold` (long, default 100), and it calls `handleKey(code, true, 0)` and then `handleKey(code, false, hold)`.
+- Produces: the debug-only `DEBUG_KEY` broadcast. Its extras are `key` (string) and `hold` (long, default 100). It turns `key` into a code with `KeyEvent.keyCodeFromString`, which takes `MENU`, `KEYCODE_MENU` or `82`, then calls `handleKey(code, true, 0)` and `handleKey(code, false, hold)`.
 - Produces: `powershell -ExecutionPolicy Bypass -File tools/demo.ps1 demo/<name>.txt` (the execution policy here is Restricted). It writes `demo/out/<name>/`, holding `demo.mp4`, one `<shot>.png` per `shot` step, and `log.txt` (each step, the output of each `shell` step, and `logcat -s QuickService`).
 
 - [x] **Step 1: Emulator and AVD.** Done 2026-11-02 in the terminal tab:
@@ -329,13 +331,13 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
   3. Always `settings put global` these exact values: `picture_backlight 100`, `picture_color_temperature 2`, `picture_mode 7`, `sound_style 1`, `hdmi_system_audio_control_enabled 0`, `power_picture_off 1`. They're fixed so every run starts the same; don't read them from `docs/haier-global-settings.txt`, whose `picture_mode` is 0.
   4. Send `input keyevent WAKEUP` (the previous run may have ended in standby), then `input keyevent HOME`. These are system keys, not ours. Clear logcat, start `shell screenrecord --bit-rate 8000000 /sdcard/demo.mp4` as a background process, and wait 2 s for it to start. screenrecord stops by itself at 180 s, so keep each demo under that.
   5. Run the steps file line by line, skipping blank lines and `#` comments:
-     - `key <name> [holdMs]` sends `DEBUG_KEY`; hold defaults to 100. Map names with a small table: MENU 82, BACK 4, DPAD_UP 19, DPAD_DOWN 20, DPAD_LEFT 21, DPAD_RIGHT 22, DPAD_CENTER 23, PROG_RED 183, PROG_GREEN 184, PROG_YELLOW 185, PROG_BLUE 186, MEDIA_PAUSE 127.
+     - `key <name> [holdMs]` sends `DEBUG_KEY` with `--es key <name>` (and `--el hold <holdMs>` when given). The name is passed as is; the service resolves it, so the script has no key table.
      - `wait <seconds>`, which allows decimals.
      - `shot <name>` runs `shell screencap -p /sdcard/shot.png`, then pulls it to `<name>.png`. Don't redirect `exec-out` output: PowerShell 5.1 corrupts binary data in a redirect.
      - `shell <command>` runs `adb shell <command>` and logs the output.
      Each line and its output go to `log.txt`.
   6. Stop the recording (`shell pkill -INT screenrecord`, then wait 2 s), pull `demo.mp4`, append `logcat -d -s QuickService` to `log.txt`, and print the output folder.
-- [ ] **Step 4: Write `demo/probe.txt` and run it** (with the emulator running):
+- [ ] **Step 4: Write a probe steps file and run it** (with the emulator running). Put it in the scratchpad, not the repo: once Task 6 consumes keys its expected output no longer holds, and `task6.txt` covers the harness from then on.
   ```
   shot home
   key MENU
@@ -345,13 +347,13 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
   shot after
   ```
   Expected:
-  - `demo/out/probe/` has a `demo.mp4` that plays and two 1920×1080 PNGs. Open the PNGs and look at them.
+  - `demo/out/<name>/` has a `demo.mp4` that plays and two 1920×1080 PNGs. Open the PNGs and look at them.
   - `log.txt` shows MENU, PROG_RED and DPAD_UP, each with a `down=true` and a `down=false` line, `held=1500` on PROG_RED's UP, and `consumed=false` throughout.
   - Also press the arrow keys in the emulator window and check the key log. If they show up, the README can say the window's keyboard reaches the service. If not, it says the keyboard only moves around the launcher.
 - [ ] **Step 5: README.** Add a short "Try it on the emulator" section:
   - Start the emulator (the command above), then run the script with `demo/task7.txt` (or the latest demo) to install the build.
   - Drive it in the emulator window with the arrow keys, Enter and Esc, as far as Step 4 found that works.
-  - Any key can be sent with `adb -s emulator-5554 shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --ei code <keycode>`: MENU is 82 and Red/Green/Yellow/Blue are 183–186.
+  - Any key can be sent with `adb -s emulator-5554 shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --es key <name>`, e.g. `MENU` or `PROG_RED` to `PROG_BLUE`, and `--el hold 1500` for a held press.
   - From Task 6, backlight, warmth and picture-off are simulated on a grey backdrop (darkening and a tint), not the real panel.
 - [ ] **Step 6: Commit** `"Emulator demo harness"`.
 
@@ -360,7 +362,6 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
 **Files:**
 - Modify: `QuickService.kt`
 - No `Store.kt`: the only stored data is the presets, so the service keeps them in SharedPreferences `"tvqs"` under `"presets"` (`"Day:100:2;Evening:60:3;Night:20:3"`), with a load and a save function. Bad data falls back to `DEFAULT_PRESETS`.
-- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/SimView.kt`: the emulator-only picture simulation (Step 1).
 - Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/PillView.kt`: `class PillView(ctx: Context) : LinearLayout` with `fun show(p: Effect.Pill)`. The look is in the spec's "Remote buttons": top-right, about 75% black, rounded 14dp, icon, title, detail and a 4dp level bar.
 
 **Interfaces:**
@@ -371,8 +372,8 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
   - **Refresh:** before passing any MENU or colour **UP** to `onKey`, read all values with `Settings.Global.getInt(contentResolver, key, default)` and call `refresh`. After a `Write` of `picture_mode`, refresh again about 300 ms later and re-render (the TV keeps backlight, and maybe warmth, per picture mode, and updates the keys itself).
   - `Write` uses `Settings.Global.putInt`; that covers screen off/on too (`power_picture_off`). Wrap each write in `try/catch (SecurityException)`; on failure, show a pill "Permission missing · Grant WRITE_SECURE_SETTINGS over adb" instead of crashing.
   - **Timeout:** a `Handler` calls `timeoutClose()` 8 s after the last key while the bar is open, restarted on each key. It's here and not in Task 7, so a MENU pressed during this task's checks can't leave an invisible bar swallowing the arrows.
-  - Leave `SetSleep`/`ExtendSleep` as TODO no-ops for now; Task 8 fills them in. Keep Task 1's key log in debug builds.
-  - **Picture simulation (emulator only, user request 2026-11-02).** The emulator has no Haier panel, so in the demos nothing would visibly change. When `BuildConfig.DEBUG && Build.HARDWARE == "ranchu"` (the emulator), `onServiceConnected` adds a `SimView` with `overlay(simView, Gravity.FILL)`, with the params set to `MATCH_PARENT` width and height, **before** the pill and the bar, so it sits under them. `SimView` is a plain `View` with `fun update(backlight: Int, warmth: Int, pictureOff: Boolean)` that stores the values and calls `invalidate()`. Its `onDraw` paints, in order:
+  - Leave `SetSleep`/`ExtendSleep` as TODO no-ops for now; Task 8 fills them in. Drop Task 1's raw key log from `onKeyEvent`: its questions are answered in `docs/haier-tests.md`, and `handleKey`'s log line is the only one kept.
+  - **Picture simulation (emulator only, user request 2026-11-02).** The emulator has no Haier panel, so in the demos nothing would visibly change. When `BuildConfig.DEBUG && Build.HARDWARE == "ranchu"` (the emulator), `onServiceConnected` adds a `SimView` with `overlay(simView, Gravity.FILL)`, with the params set to `MATCH_PARENT` width and height, **before** the pill and the bar, so it sits under them. `SimView` is a `private class` at the bottom of `QuickService.kt` (it's small and debug-only, so it gets no file of its own): a plain `View` with `fun update(backlight: Int, warmth: Int, pictureOff: Boolean)` that stores the values and calls `invalidate()`. Its `onDraw` paints, in order:
     - an opaque light grey (`#C8C8C8`) "picture" (the launcher is too dark to show warmth);
     - the warmth tint: Warm (3) `#FF9A3C` at 18% alpha, Cool (1) `#5AA0FF` at 12%, and nothing for Standard (2) or User (0);
     - black at `(100 - backlight) * 0.8 / 100` alpha, so 100 is clear and 20 is mostly dark;

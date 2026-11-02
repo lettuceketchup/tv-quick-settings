@@ -21,3 +21,17 @@ The user asked for a demo of each UI step on a TV-sized emulator before anything
 | Cut | Separate `key`/`hold` step types; reading the settings file. | Cut: one `key <name> [holdMs]` step and a fixed seed. The README section stays, because the user asked to be able to drive the emulator. |
 
 Also measured during setup: the emulator won't start without `platform-tools` inside the SDK (now installed), and `screenrecord` works on the image.
+
+## Ponytail pass on the amendment (2026-11-02)
+
+The user approved all five cuts, and they're applied to the plan.
+
+| # | Cut | Replaced by |
+|---|---|---|
+| P1 | The key-name table in `demo.ps1` | `DEBUG_KEY --es key <name>`, resolved with `KeyEvent.keyCodeFromString` (API 29+ takes `MENU`, `KEYCODE_MENU` or `82`). |
+| P2 | Task 1's raw key log kept alongside `handleKey`'s log | `handleKey`'s `consumed=` line only. |
+| P3 | `SimView.kt` as its own file | A `private class` in `QuickService.kt`. |
+| P4 | Committing `demo/probe.txt` | A scratchpad steps file; `task6.txt` covers the harness from Task 6 on. |
+| P5 | The long emulator paragraph in Global Constraints | Two sentences pointing at Task 5a, which now holds the details. |
+
+Left alone on purpose: the `ro.kernel.qemu` guard, `pm clear` before each run, the `$LASTEXITCODE` checks, video plus screenshots, the four step types, and SimView itself.
