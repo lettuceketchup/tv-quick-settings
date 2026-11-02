@@ -19,20 +19,21 @@
 - Haier adb: `adb connect 192.168.29.186:5555`. The IP isn't reserved; if that fails, scan 192.168.29.x for port 5555. USB debugging may be off; ask the user to turn it on.
 - The only buttons that change behaviour are MENU (short press; a held MENU does nothing, because the remote's own long-press key opens Settings) and Red/Green/Yellow/Blue. Every other key passes through untouched unless the bar, a pane, the screen cover or the last-minute warning is up (see the spec's "Remote buttons").
 - Backlight: 10 segments, steps of 10. Presets: Day 100/Standard, Evening 60/Warm, Night 20/Warm (backlight % / warmth).
-- **Task 0 is done** (`docs/haier-tests.md`, and the Result column in the spec's "Setting keys" table). Tiles: Backlight, Warmth, Preset, Picture, Sound, Output, Sleep, Screen off, Edit. Blue light, Dialogue and Ambient were dropped. Mode keys take **only** the values listed there: an unlisted `picture_mode` value corrupted the User mode on the TV.
-- Sleep steps: 10, 15, 30, 60, 90, 120 min. Reminders at 60, 30, 15, 5 min left, only those < the timer's original length (6 h and 2 h from the spec can never fire, since the longest timer is 120 min). The last-minute extension is `min(15, original)`, and extending doesn't change the original length.
+- **Task 0 is done** (`docs/haier-tests.md`, and the Result column in the spec's "Setting keys" table). Tiles: Backlight, Warmth, Preset, Picture, Sound, Output, Sleep, Screen off, in that fixed order. Blue light, Dialogue and Ambient were dropped, and the plan review dropped Edit (edit mode). Mode keys take **only** the values listed there: an unlisted `picture_mode` value corrupted the User mode on the TV.
+- Sleep steps: 10, 15, 30, 60, 90, 120 min. Reminders at 60, 30, 15, 5 min left, only those < the timer's original length. Times are always shown in minutes ("90 min"). The last-minute extension is `min(15, original)`, and extending doesn't change the original length.
 - **Key events carry no repeats.** An accessibility service sees keys before Android synthesises key repeats, so it most likely gets one DOWN and one UP per press (Task 1's key log checks this; if repeats do arrive, nothing below breaks). Long presses are detected from how long the key was held (`event.eventTime - event.downTime` on UP, long = ≥ 1000 ms), never from `repeatCount`. Holding Up/Down steps once.
-- **The remote caps a hold at 3 s and then sends its own long-press key** (Task 1 key log): MENU → 250 (opens Settings), Red → 130 `MEDIA_RECORD`, Green → 127 `MEDIA_PAUSE`, Yellow → 86 `MEDIA_STOP`, Blue → 217 `RO` (opens Magic Board). After a long colour press (≥ 1000 ms) the service consumes the next key if it is that colour's follow-up and arrives within 500 ms of the UP; MENU's 250 still passes through. Keycodes: MENU 82, colours 183–186, FAV 93.
-- Bar auto-closes after 8 s without a key press, except in edit mode. Normal pills last 2 s, sleep reminders 3 s, and the last-minute pill stays until answered or the timer ends.
-- Copy is sentence case, e.g. "Sleeping in 1 min", "The TV will turn off", "Editing the bar · Back done", "Press OK", "Shown", "Hidden", "Moving", "OK ⋯".
+- **The remote caps a hold at 3 s and then sends its own long-press key** (Task 1 key log): MENU → 250 (opens Settings), Red → 130 `MEDIA_RECORD`, Green → 127 `MEDIA_PAUSE`, Yellow → 86 `MEDIA_STOP`, Blue → 217 `RO` (opens Magic Board). The follow-up is a 1 ms press sent right after the UP, so no clock is needed: if the key event just before it was a colour UP with a hold ≥ 1000 ms, the Controller consumes the follow-up's DOWN and UP (Task 5, rule 0). MENU's 250 still passes through. Keycodes: MENU 82, colours 183–186, FAV 93.
+- Bar auto-closes after 8 s without a key press. Normal pills last 2 s, sleep reminders 3 s, and the last-minute pill stays until answered or the timer ends.
+- Copy is sentence case, e.g. "Sleeping in 1 min", "The TV will turn off", "Press OK", "OK ⋯".
+- Plan review (2026-11-02): `docs/superpowers/reviews/2026-11-02-review-pass1.md` to `-pass3.md` explain the changes below (H1–H4, M1–M4, P1–P4 refer to them).
 
 ## Review Focus
 
 1. **Values set from the TV's own menu that fall between ticks.** Example: backlight 37. Up should go to 40 and Down to 30, and nothing should break. The test is in Task 2.
-2. **A mode key holding a value the app doesn't know**, e.g. `picture_mode=7` after a firmware update. The tile shows "Mode 7"; Up moves to the last known option and Down to the first. The test is in Task 2.
-3. **Holding a key down.** Holding MENU (the remote keeps it down about 3 s, then sends its own Settings key) never toggles the bar. Holding a colour button saves the preset once, on release, and doesn't also apply it. The tests are in Task 5.
+2. **A mode key holding a value the app doesn't know**, e.g. `picture_mode=5` after a firmware update. The tile shows "Mode 7"; Up moves to the last known option and Down to the first. The test is in Task 2.
+3. **Holding a key down.** Holding MENU (the remote keeps it down about 3 s, then sends its own Settings key) never toggles the bar. Holding a colour button saves the preset once, on release, and doesn't also apply it. A hold of 3 s or more also swallows the remote's follow-up key, and a held Blue stays covered. The tests are in Task 5.
 4. **Colour buttons pressed while the bar is open.** The preset applies and the open bar shows the new values right away. The test is in Task 5.
-5. **Every tile hidden in edit mode.** The bar opens with only Edit, focus stays valid, and the layout survives a restart. The decoder appends tiles missing from saved data, so new tiles in a later version show up. The tests are in Tasks 4 and 6.
+5. **Values the TV changes by itself.** After a Picture switch the bar re-reads backlight and warmth (the TV keeps them per mode). Turning the TV off with the power button cancels the sleep timer and clears the screen cover, but Screen off doesn't. Checked on the TV in Tasks 6–8.
 
 ---
 
@@ -123,27 +124,26 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 ### Task 2: Tiles, steps and presets (pure logic)
 
 **Files:**
-- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/Tiles.kt`
-- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/Haier.kt` (the setting keys and value → name lists from `docs/haier-tests.md`, as constants)
+- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/Tiles.kt`, including the Haier setting keys and value → name lists from `docs/haier-tests.md` as constants (one target, one file)
 - Test: `app/src/test/kotlin/io/github/lettuceketchup/tvqs/TilesTest.kt`
 
 **Interfaces:**
 - Produces:
-  - `enum class TileId { BACKLIGHT, WARMTH, PRESET, PICTURE, SOUND, OUTPUT, SLEEP, SCREEN_OFF, EDIT }`
+  - `enum class TileId { BACKLIGHT, WARMTH, PRESET, PICTURE, SOUND, OUTPUT, SLEEP, SCREEN_OFF }`. The enum order is the bar's order; there's no edit mode.
   - `data class Option(val label: String, val value: Int)`
   - `sealed interface Tile { val id: TileId; val label: String }`, with these implementations:
-    - `data class LevelTile(id, label, key: String, segments: Int)`. Values are 0–100, which is already `picture_backlight`'s raw range, so there's no conversion.
+    - `data class LevelTile(id, label, key: String)`: only Backlight. Values are 0–100, which is already `picture_backlight`'s raw range, so there's no conversion. `const val BACKLIGHT_STEP = 10` gives the 10 segments.
     - `data class ModeTile(id, label, key: String?, options: List<Option>, hasPane: Boolean)`. A `null` key is the Preset tile, which writes through presets.
     - `data class ActionTile(id, label)`: only Screen off, so no action enum.
-    - `object SleepTile` and `object EditTile`, both implementing `Tile`.
-  - `fun stepLevel(percent: Int, segments: Int, up: Boolean): Int`: move to the next tick in that direction, clamped to 0..100. Off-grid values snap to the neighbouring tick.
+    - `object SleepTile`, implementing `Tile`.
+  - `fun stepLevel(percent: Int, step: Int, up: Boolean): Int`: move to the next multiple of `step` in that direction, clamped to 0..100. Off-grid values snap to the neighbouring tick.
   - `fun stepMode(index: Int, size: Int, up: Boolean): Int?`: Up = index − 1 (the option shown above), with no wrap and `null` at an end. An unknown value (`index == -1`) goes Up to `size-1` and Down to `0`.
   - `fun wrapFocus(index: Int, count: Int, right: Boolean): Int`
   - `fun modeLabel(tile: ModeTile, value: Int): String`: the option label, or `"Mode $value"` when the value is unknown. The Preset tile is the exception: an unknown value reads `"Custom"`.
   - `fun presetIndex(presets: List<Preset>, backlight: Int, warmth: Int): Int`: the index of the preset whose backlight **and** warmth both match the current values, or `-1` (shown as "Custom"). This is the Preset tile's value; it isn't stored anywhere. From Custom, Up goes to the last preset (Night) and Down to the first (Day), the same rule as any unknown mode value.
   - Haier mode lists (from `docs/haier-tests.md`): Picture `picture_mode` = User 0, Standard 7, Vivid 3, Sport 2, Movie 9, Game 10, Energy Saving 11 (menu order). Sound `sound_style` = User 0, Standard 1, Night 2, Sports 3, Movie 4, Music 5, News 6. Warmth `picture_color_temperature` = User 0, Cool 1, Standard 2, Warm 3 (no pane). Output `hdmi_system_audio_control_enabled` = TV speakers 0, External audio 1 (no pane). Screen off: `power_picture_off` 0 = off, 1 = on.
   - `data class Preset(val name: String, val backlight: Int, val warmth: Int)` (backlight 0–100, warmth a raw `picture_color_temperature` value) and `val DEFAULT_PRESETS = listOf(Preset("Day",100,2), Preset("Evening",60,3), Preset("Night",20,3))`. The index order is Day=0, Evening=1, Night=2.
-  - `fun defaultTiles(): Map<TileId, Tile>`, built from `Haier.kt`, holding only the tiles kept in Task 0.
+  - `fun defaultTiles(): Map<TileId, Tile>`, built from the Haier constants, holding only the tiles kept in Task 0.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -157,7 +157,7 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 @Test fun modeDownMovesToNext() = assertEquals(1, stepMode(0, 2, up = false))
 @Test fun unknownModeValue() { assertEquals(4, stepMode(-1, 5, true)); assertEquals(0, stepMode(-1, 5, false)) }
 @Test fun unknownModeLabel() = assertEquals("Mode 7", modeLabel(ModeTile(TileId.PICTURE, "Picture", "picture_mode", listOf(Option("Standard", 0)), true), 7))
-@Test fun focusWrapsBothWays() { assertEquals(10, wrapFocus(0, 11, right = false)); assertEquals(0, wrapFocus(10, 11, right = true)) }
+@Test fun focusWrapsBothWays() { assertEquals(7, wrapFocus(0, 8, right = false)); assertEquals(0, wrapFocus(7, 8, right = true)) }
 @Test fun pictureOptionsOnlyKnownValuesInMenuOrder() = assertEquals(listOf(0, 7, 3, 2, 9, 10, 11), (defaultTiles()[TileId.PICTURE] as ModeTile).options.map { it.value })
 @Test fun soundOptionsOnlyKnownValues() = assertEquals((0..6).toList(), (defaultTiles()[TileId.SOUND] as ModeTile).options.map { it.value })
 @Test fun presetMatchesBothValues() { assertEquals(1, presetIndex(DEFAULT_PRESETS, 60, 3)); assertEquals(-1, presetIndex(DEFAULT_PRESETS, 60, 2)) }
@@ -165,7 +165,7 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 ```
 
 - [ ] **Step 2: Run** `./gradlew testDebugUnitTest`. Expected: FAIL, because the symbols are unresolved.
-- [ ] **Step 3: Implement `Tiles.kt` and `Haier.kt`** with the signatures above.
+- [ ] **Step 3: Implement `Tiles.kt`** with the signatures above.
 - [ ] **Step 4: Run** `./gradlew testDebugUnitTest`. Expected: PASS.
 - [ ] **Step 5: Commit** `git commit -am "Tiles, steps, presets"` (after adding the new files).
 
@@ -181,10 +181,9 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
   - `fun minutesLeft(msLeft: Long): Int`: rounds up, so 61 s gives 2.
   - `fun nextLonger(leftMin: Int): Int?`: the first step > `leftMin` (`0` = off, which gives 10), or `null` above 120.
   - `fun nextShorter(leftMin: Int): Int?`: the largest step < `leftMin`. Returns `0` (Off) when no step is smaller, and `null` when the timer is off.
-  - `fun reminderCrossed(prevMsLeft: Long, nowMsLeft: Long, startedMin: Int): Int?`: the milestone in `[60,30,15,5]` passed between the two times (prev > m·60000 ≥ now) with `m < startedMin`, otherwise `null`.
-  - `fun lastMinute(msLeft: Long): Boolean = msLeft in 1..60_000`
+  - `fun remindersAhead(startedMin: Int, msLeft: Long): List<Int>`: the milestones in `[60,30,15,5]` still to come, i.e. `m < startedMin` and `m·60000 < msLeft`. Task 8 schedules one pill per milestone.
   - `fun extensionMin(startedMin: Int): Int = minOf(15, startedMin)`
-  - `fun fmtMinutes(min: Int): String`: `"23 min"`, `"1 h"`, `"1 h 30 min"`.
+  - Times are shown as `"$min min"` everywhere, so there's no formatting function.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -195,12 +194,12 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 @Test fun shorterFromRunning() = assertEquals(15, nextShorter(23))
 @Test fun shorterBelowSmallestIsOff() = assertEquals(0, nextShorter(8))
 @Test fun shorterWhenOff() = assertNull(nextShorter(0))
-@Test fun reminderAt30() = assertEquals(30, reminderCrossed(31 * 60_000L, 29 * 60_000L, startedMin = 60))
-@Test fun noReminderEqualToStart() = assertNull(reminderCrossed(31 * 60_000L, 29 * 60_000L, startedMin = 30))
+@Test fun remindersForAnHour() = assertEquals(listOf(30, 15, 5), remindersAhead(60, 60 * 60_000L))
+@Test fun remindersAfterExtending() = assertEquals(listOf(15, 5), remindersAhead(60, 16 * 60_000L))
+@Test fun noRemindersForShortTimer() = assertEquals(emptyList<Int>(), remindersAhead(5, 5 * 60_000L))
 @Test fun extensionShortTimer() = assertEquals(10, extensionMin(10))
 @Test fun extensionLongTimer() = assertEquals(15, extensionMin(60))
 @Test fun roundsUp() = assertEquals(2, minutesLeft(61_000))
-@Test fun formats() { assertEquals("23 min", fmtMinutes(23)); assertEquals("1 h", fmtMinutes(60)); assertEquals("1 h 30 min", fmtMinutes(90)) }
 ```
 
 - [ ] **Step 2: Run** the tests. Expected: FAIL.
@@ -208,40 +207,9 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 - [ ] **Step 4: Run** the tests. Expected: PASS.
 - [ ] **Step 5: Commit** `"Sleep timer maths"`.
 
-### Task 4: Bar layout: order, hidden tiles, persistence (pure)
+### Task 4: removed in the plan review
 
-**Files:**
-- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/BarLayout.kt`
-- Test: `app/src/test/kotlin/io/github/lettuceketchup/tvqs/BarLayoutTest.kt`
-
-**Interfaces:**
-- Consumes: `TileId` (Task 2).
-- Produces:
-  - `data class BarLayout(val order: List<TileId>, val hidden: Set<TileId>)`. `order` never contains `EDIT`.
-  - `fun BarLayout.visible(): List<TileId>`: the shown tiles in order, then `EDIT`.
-  - `fun BarLayout.all(): List<TileId>`: every tile in order, for edit mode, without `EDIT`.
-  - `fun BarLayout.toggle(id: TileId): BarLayout`
-  - `fun BarLayout.move(id: TileId, right: Boolean): BarLayout`: swaps with the neighbour and leaves the layout unchanged at an end.
-  - `fun BarLayout.encode(): String`: e.g. `"BACKLIGHT,WARMTH,-OUTPUT,…"`, where `-` marks hidden.
-  - `fun decodeBarLayout(s: String?, known: List<TileId>): BarLayout`: `null` or garbage gives the default (`known` in order, none hidden). Unknown names are dropped, and known ids missing from the string are appended as shown.
-
-- [ ] **Step 1: Write the failing tests**
-
-```kotlin
-val known = listOf(TileId.BACKLIGHT, TileId.WARMTH, TileId.OUTPUT)
-@Test fun visibleEndsWithEdit() = assertEquals(listOf(TileId.BACKLIGHT, TileId.WARMTH, TileId.OUTPUT, TileId.EDIT), decodeBarLayout(null, known).visible())
-@Test fun allHiddenLeavesEdit() { var l = decodeBarLayout(null, known); known.forEach { l = l.toggle(it) }; assertEquals(listOf(TileId.EDIT), l.visible()) }
-@Test fun moveStopsAtEnd() { val l = decodeBarLayout(null, known); assertEquals(l, l.move(TileId.BACKLIGHT, right = false)) }
-@Test fun moveSwaps() = assertEquals(listOf(TileId.WARMTH, TileId.BACKLIGHT, TileId.OUTPUT), decodeBarLayout(null, known).move(TileId.BACKLIGHT, true).order)
-@Test fun roundTrip() { val l = decodeBarLayout(null, known).toggle(TileId.OUTPUT).move(TileId.OUTPUT, false); assertEquals(l, decodeBarLayout(l.encode(), known)) }
-@Test fun newTileAppended() = assertEquals(known, decodeBarLayout("BACKLIGHT,WARMTH", known).order)
-@Test fun garbageGivesDefault() = assertEquals(decodeBarLayout(null, known), decodeBarLayout("%%,NOPE", known))
-```
-
-- [ ] **Step 2: Run** the tests. Expected: FAIL.
-- [ ] **Step 3: Implement `BarLayout.kt`.**
-- [ ] **Step 4: Run** the tests. Expected: PASS.
-- [ ] **Step 5: Commit** `"Bar layout and persistence format"`.
+Edit mode (hiding and reordering tiles) was dropped, so there is no bar layout to store. The tile order is `TileId`'s order. The task numbers are kept so the others don't move; Task 9 (screen off) was merged into Tasks 5 and 6 the same way.
 
 ### Task 5: Controller: key routing and UI state (pure)
 
@@ -252,24 +220,26 @@ This is the core. The service sends every key here and acts on the returned effe
 - Test: `app/src/test/kotlin/io/github/lettuceketchup/tvqs/ControllerTest.kt`
 
 **Interfaces:**
-- Consumes: everything from Tasks 2–4.
+- Consumes: everything from Tasks 2–3.
 - Produces:
-  - `enum class Key { MENU, UP, DOWN, LEFT, RIGHT, OK, BACK, RED, GREEN, YELLOW, BLUE, OTHER }`, and `fun keyOf(keyCode: Int): Key`, which maps `android.view.KeyEvent.KEYCODE_*` values, with `DPAD_CENTER` and `ENTER` both mapping to `OK`. Use the keycodes recorded by Task 1's key log (if MENU never arrived, FAV maps to `MENU`).
+  - `enum class Key { MENU, UP, DOWN, LEFT, RIGHT, OK, BACK, RED, GREEN, YELLOW, BLUE, FOLLOW_UP, OTHER }`, and `fun keyOf(keyCode: Int): Key`, which maps `android.view.KeyEvent.KEYCODE_*` values, with `DPAD_CENTER` and `ENTER` both mapping to `OK`. Use the keycodes recorded by Task 1's key log. `FOLLOW_UP` is the remote's long-press keys for the colours: 130, 127, 86 and 217 (MENU's 250 stays `OTHER`).
   - `sealed interface Effect` with:
     - `Write(key: String, raw: Int)`. Screen off and on are `Write("power_picture_off", 0)` and `Write("power_picture_off", 1)`; there are no separate effects for them.
     - `Pill(title: String, detail: String, levelPercent: Int?, millis: Long)`, where `millis = 0` means it stays up
     - `HidePill`
     - `SetSleep(minutes: Int)` (0 = cancel), `ExtendSleep(minutes: Int)`
-    - `SaveLayout(layout: BarLayout)`, `SavePresets(presets: List<Preset>)`
-  - `class Controller(tiles: Map<TileId, Tile>, layout: BarLayout, presets: List<Preset>)` with:
-    - `fun onKey(key: Key, down: Boolean, heldMs: Long): Boolean`: returns consumed. `heldMs` is `eventTime - downTime` (0 on DOWN). Effects are queued into `val effects: MutableList<Effect>`, which the service drains after each call.
+    - `SavePresets(presets: List<Preset>)`
+  - `class Controller(tiles: Map<TileId, Tile>, presets: List<Preset>)` with:
+    - `fun onKey(key: Key, down: Boolean, heldMs: Long): Boolean`: returns consumed. `heldMs` is `eventTime - downTime` (0 on DOWN). The service calls it for **every** key, `OTHER` included, because rule 0 looks at the previous event. Effects are queued into `val effects: MutableList<Effect>`, which the service drains after each call.
     - `fun refresh(values: Map<TileId, Int>)`: raw setting values (backlight 0–100, mode values as stored). The Preset value is derived with `presetIndex`, not passed in.
-    - `var sleepLeftMin: Int` and `var sleepStartedMin: Int`, set by the service.
+    - `var sleepLeftMin: Int` and `var sleepStartedMin: Int`, set by the service before every `onKey` call and every render.
     - `fun showSleepWarning()` and `fun clearSleepWarning()`
-    - `fun timeoutClose()`: closes the bar unless editing.
-    - `val state: UiState`, where `data class UiState(val barOpen: Boolean, val tiles: List<TileId>, val focus: Int, val paneIndex: Int?, val editing: Boolean, val held: Boolean, val covered: Boolean, val warning: Boolean)`.
+    - `fun timeoutClose()`: closes the bar and the pane.
+    - `fun screenWentOff()`: the TV was turned off (Task 8's screen-off receiver). Clears `covered` and `warning`, and closes the bar.
+    - `val state: UiState`, where `data class UiState(val barOpen: Boolean, val focus: Int, val paneIndex: Int?, val covered: Boolean, val warning: Boolean)`. `focus` indexes `TileId.entries`.
     - `fun valueOf(id: TileId): Int?`, used by the view.
 - Routing rules, in priority order:
+  0. If the key is `FOLLOW_UP` and the event just before it was a colour UP with `heldMs ≥ 1000`: consume its DOWN and its UP, and do nothing else. Otherwise `FOLLOW_UP` is treated as `OTHER`. This rule comes before rule 1, or a 3 s Blue hold would uncover the screen straight away.
   1. If `covered` (screen off): the next DOWN emits `Write("power_picture_off", 1)`, and both that DOWN and its UP are consumed. (The firmware may also turn the picture back on by itself on a key press; writing 1 again is harmless.)
   2. If `warning`: OK emits `ExtendSleep(extensionMin(sleepStartedMin))` + `HidePill`; BACK emits `HidePill`. Both are consumed, and both clear `warning`.
   3. MENU and colour keys act **on UP**: their DOWN is consumed and nothing happens yet. On UP, `heldMs ≥ 1000` is a long press:
@@ -277,26 +247,25 @@ This is the core. The service sends every key here and acts on the returned effe
      - Red/Green/Yellow long → save the current backlight and warmth into Night/Evening/Day, then `SavePresets` + `Pill("Saved to Night", "Backlight 37 · Standard", 37, 2000)` (the current values).
      - Blue long → same as short.
 
-     A short press runs the short action: MENU toggles the bar (on close, also closes the pane and leaves edit mode). Red/Green/Yellow apply the Night/Evening/Day preset: `Write` backlight and warmth, update the values, then `Pill(name, "Backlight X · <warmth label>", X, 2000)`. Blue closes the bar, sets `covered` and emits `Write("power_picture_off", 0)`.
+     A short press runs the short action: MENU toggles the bar (on close, also closes the pane). Red/Green/Yellow apply the Night/Evening/Day preset: `Write` backlight and warmth, update the values, then `Pill(name, "Backlight X · <warmth label>", X, 2000)`. Blue runs **screen off**: close the bar, set `covered` and emit `Write("power_picture_off", 0)`.
   4. If the bar is closed: return `false` for everything else.
-  5. Bar open (consume DOWN and UP for UP/DOWN/LEFT/RIGHT/OK/BACK; let OTHER through), with the pane, edit mode or normal mode taking the keys as described in the spec's "The bar", "Tile types", "Editing the bar" and "Sleep timer":
+  5. Bar open (consume DOWN and UP for UP/DOWN/LEFT/RIGHT/OK/BACK; let OTHER through), with the pane or normal mode taking the keys as described in the spec's "The bar", "Tile types" and "Sleep timer":
      - Level Up/Down → `stepLevel` then `Write(key, value)`.
      - Mode Up/Down → `stepMode` then `Write`. Preset writes backlight and warmth.
      - Up/Down/Left/Right/OK/Back act on DOWN; their UP is only consumed. A held key steps once (no repeats arrive).
      - Sleep Up → `SetSleep(nextLonger)`; Down → `SetSleep(nextShorter)`.
-     - OK on a mode with a pane opens the pane. OK on an action emits its effect and closes the bar. OK on Edit enters edit mode with focus 0.
+     - OK on a mode with a pane opens the pane. OK on Screen off runs the same screen-off path as Blue (so `covered` is set).
      - The pane: Up/Down move the highlight (clamped), OK writes and closes the pane, BACK closes the pane.
-     - Edit mode: Up/Down toggle (`SaveLayout`), OK holds/drops, held Left/Right `move`, BACK exits to focus on Edit.
      - Normal BACK closes the bar.
 
-- [ ] **Step 1: Write the failing tests.** Use a helper `fun Controller.press(k: Key) { onKey(k, true, 0); onKey(k, false, 100) }` and `fun Controller.hold(k: Key, ms: Long = 3000) { onKey(k, true, 0); onKey(k, false, ms) }`. Build `defaultTiles()` with a test `BarLayout`, and `refresh` backlight 37, warmth 2, picture 0.
+- [ ] **Step 1: Write the failing tests.** Use a helper `fun Controller.press(k: Key) { onKey(k, true, 0); onKey(k, false, 100) }` and `fun Controller.hold(k: Key, ms: Long = 3000) { onKey(k, true, 0); onKey(k, false, ms) }`. Build it from `defaultTiles()` and `DEFAULT_PRESETS`, and `refresh` backlight 37, warmth 2, picture 0.
 
 ```kotlin
 @Test fun menuShortOpensBar() { c.press(Key.MENU); assertTrue(c.state.barOpen) }
 @Test fun menuHoldDoesNothing() { c.hold(Key.MENU); assertFalse(c.state.barOpen); assertTrue(c.effects.isEmpty()) }
 @Test fun menuHoldWhileOpenKeepsBar() { c.press(Key.MENU); c.hold(Key.MENU); assertTrue(c.state.barOpen) }
 @Test fun otherKeysPassWhenClosed() = assertFalse(c.onKey(Key.UP, true, 0))
-@Test fun leftFromFirstGoesToEdit() { c.press(Key.MENU); c.press(Key.LEFT); assertEquals(TileId.EDIT, c.state.tiles[c.state.focus]) }
+@Test fun leftFromFirstGoesToLast() { c.press(Key.MENU); c.press(Key.LEFT); assertEquals(TileId.SCREEN_OFF, TileId.entries[c.state.focus]) }
 @Test fun upOnBacklightWritesNextTick() { c.press(Key.MENU); c.press(Key.UP); assertTrue(Effect.Write("picture_backlight", 40) in c.effects) }
 @Test fun presetTileFollowsValues() { c.press(Key.MENU); assertEquals(-1, c.valueOf(TileId.PRESET)); c.press(Key.GREEN); assertEquals(1, c.valueOf(TileId.PRESET)) }
 @Test fun okOnPictureOpensPaneButNotOnWarmth() { /* focus PICTURE → OK → paneIndex == current; focus WARMTH → OK → paneIndex == null */ }
@@ -304,69 +273,76 @@ This is the core. The service sends every key here and acts on the returned effe
 @Test fun backClosesPaneThenBar() { /* pane open → BACK → bar still open, pane null → BACK → bar closed */ }
 @Test fun redAppliesNightWhileBarOpen() { c.press(Key.MENU); c.press(Key.RED); assertEquals(20, c.valueOf(TileId.BACKLIGHT)); assertTrue(c.state.barOpen); assertTrue(c.effects.any { it is Effect.Pill && it.title == "Night" }) }
 @Test fun redHoldSavesIntoNightWithoutApplying() { c.hold(Key.RED, 1500); assertTrue(c.effects.any { it is Effect.SavePresets && it.presets[2].backlight == 37 }); assertFalse(c.effects.any { it is Effect.Write }) }
+@Test fun greenHeld3sSwallowsFollowUp() { c.hold(Key.GREEN); assertTrue(c.onKey(Key.FOLLOW_UP, true, 0)); assertTrue(c.onKey(Key.FOLLOW_UP, false, 1)) }
+@Test fun followUpAlonePasses() = assertFalse(c.onKey(Key.FOLLOW_UP, true, 0))
+@Test fun blueHeld3sStaysCovered() { c.hold(Key.BLUE); c.press(Key.FOLLOW_UP); assertTrue(c.state.covered); assertFalse(Effect.Write("power_picture_off", 1) in c.effects) }
+@Test fun screenOffTileCovers() { /* MENU, LEFT (focus SCREEN_OFF), OK → covered, Write(power_picture_off, 0), bar closed; next OK DOWN is consumed */ }
+@Test fun screenWentOffClearsCover() { c.press(Key.BLUE); c.screenWentOff(); assertFalse(c.state.covered); assertFalse(c.onKey(Key.OK, true, 0)) }
 @Test fun blueCoversAndNextKeyIsSwallowed() { c.press(Key.BLUE); assertTrue(c.state.covered); assertTrue(Effect.Write("power_picture_off", 0) in c.effects); assertTrue(c.onKey(Key.OK, true, 0)); assertTrue(c.onKey(Key.OK, false, 100)); assertTrue(Effect.Write("power_picture_off", 1) in c.effects); assertFalse(c.state.covered) }
 @Test fun warningOkExtendsByStart() { c.sleepStartedMin = 10; c.showSleepWarning(); c.press(Key.OK); assertTrue(Effect.ExtendSleep(10) in c.effects); assertFalse(c.state.warning) }
 @Test fun warningBackOnlyHides() { c.showSleepWarning(); c.press(Key.BACK); assertTrue(Effect.HidePill in c.effects); assertFalse(c.effects.any { it is Effect.ExtendSleep }) }
 @Test fun warningBeatsBar() { c.press(Key.MENU); c.showSleepWarning(); c.press(Key.BACK); assertTrue(c.state.barOpen) }
 @Test fun sleepUpFromOff() { /* focus SLEEP, sleepLeftMin=0 → UP → SetSleep(10) */ }
 @Test fun sleepDownBelowSmallestCancels() { /* sleepLeftMin=8 → DOWN → SetSleep(0) */ }
-@Test fun editToggleAndMove() { /* OK on EDIT → editing, focus 0; DOWN → SaveLayout with tiles[0] hidden; OK, RIGHT, OK → order swapped; held LEFT at 0 → unchanged; BACK → not editing, focus on EDIT */ }
-@Test fun timeoutIgnoredWhileEditing() { /* enter edit → timeoutClose() → barOpen still true */ }
-@Test fun allHiddenFocusValid() { /* hide every tile, BACK out of edit → tiles == [EDIT], focus 0 */ }
 ```
 
-  Write the four comment-only tests as real code. Each comment lists the exact keys and assertions.
+  Write the comment-only tests as real code. Each comment lists the exact keys and assertions.
 - [ ] **Step 2: Run** the tests. Expected: FAIL.
 - [ ] **Step 3: Implement `Controller.kt`** following the routing rules. Keep the set of DOWN keys it consumed, so each matching UP is consumed too.
-- [ ] **Step 4: Run** the tests. Expected: all of Tasks 2–5 PASS.
-- [ ] **Step 5: Commit** `"Controller: key routing, panes, presets, edit mode, warning"`.
+- [ ] **Step 4: Run** the tests. Expected: all of Tasks 2, 3 and 5 PASS.
+- [ ] **Step 5: Commit** `"Controller: key routing, panes, presets, warning"`.
 
 ### Task 6: Service wiring, settings I/O, screen off and the corner pill
 
 **Files:**
 - Modify: `QuickService.kt`
-- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/Store.kt`: wraps SharedPreferences `"tvqs"`. Keys `"layout"` (`BarLayout.encode()`) and `"presets"` (`"Day:100:2;Evening:60:3;Night:20:3"`); `fun loadLayout(): BarLayout`, `fun saveLayout(l: BarLayout)`, `fun loadPresets(): List<Preset>`, `fun savePresets(p: List<Preset>)`. Bad data falls back to the defaults.
+- No `Store.kt`: the only stored data is the presets, so the service keeps them in SharedPreferences `"tvqs"` under `"presets"` (`"Day:100:2;Evening:60:3;Night:20:3"`), with a load and a save function. Bad data falls back to `DEFAULT_PRESETS`.
 - Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/PillView.kt`: `class PillView(ctx: Context) : LinearLayout` with `fun show(p: Effect.Pill)`. The look is in the spec's "Remote buttons": top-right, about 75% black, rounded 14dp, icon, title, detail and a 4dp level bar.
 
 **Interfaces:**
-- Consumes: `Controller`, `Effect`, `keyOf`, `decodeBarLayout`, `defaultTiles`.
+- Consumes: `Controller`, `Effect`, `keyOf`, `defaultTiles`, `DEFAULT_PRESETS`.
 - Produces: `QuickService.overlay(view: View, gravity: Int): WindowManager.LayoutParams`, which Task 7 reuses. It creates `TYPE_ACCESSIBILITY_OVERLAY` with `FLAG_NOT_FOCUSABLE or FLAG_NOT_TOUCHABLE or FLAG_LAYOUT_IN_SCREEN` and `PixelFormat.TRANSLUCENT`.
 
-- [ ] **Step 1: Wire up `onKeyEvent`.** Map to `Key` and call `controller.onKey(key, event.action == ACTION_DOWN, event.eventTime - event.downTime)`, then drain and perform the effects. The return value is what's consumed. Before the bar opens (or when a colour key fires), refresh the values from `Settings.Global.getInt(contentResolver, key, default)`. `Write` uses `Settings.Global.putInt`; that covers screen off/on too (`power_picture_off`). Wrap each write in `try/catch (SecurityException)`; on failure, show a pill "Permission missing · Grant WRITE_SECURE_SETTINGS over adb" instead of crashing. Leave `SetSleep`/`ExtendSleep` as TODO no-ops for now; Task 8 fills them in. Keep Task 1's key log in debug builds.
+- [ ] **Step 1: Wire up `onKeyEvent`.** Map to `Key` and call `controller.onKey(key, event.action == ACTION_DOWN, event.eventTime - event.downTime)`, then drain and perform the effects. Call it for every key, `OTHER` included (rule 0 needs the previous event). The return value is what's consumed.
+  - **Refresh:** before passing any MENU or colour **UP** to `onKey`, read all values with `Settings.Global.getInt(contentResolver, key, default)` and call `refresh`. After a `Write` of `picture_mode`, refresh again about 300 ms later and re-render (the TV keeps backlight, and maybe warmth, per picture mode, and updates the keys itself).
+  - `Write` uses `Settings.Global.putInt`; that covers screen off/on too (`power_picture_off`). Wrap each write in `try/catch (SecurityException)`; on failure, show a pill "Permission missing · Grant WRITE_SECURE_SETTINGS over adb" instead of crashing.
+  - **Timeout:** a `Handler` calls `timeoutClose()` 8 s after the last key while the bar is open, restarted on each key. It's here and not in Task 7, so a MENU pressed during this task's checks can't leave an invisible bar swallowing the arrows.
+  - Leave `SetSleep`/`ExtendSleep` as TODO no-ops for now; Task 8 fills them in. Keep Task 1's key log in debug builds.
 - [ ] **Step 2: Build** with `./gradlew assembleDebug testDebugUnitTest`. Expected: success.
 - [ ] **Step 3: Reinstall on the TV (ask the user whether the TV is free first):** `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The grant and the accessibility service from Task 1 stay; check with `adb shell settings get secure enabled_accessibility_services`.
 - [ ] **Step 4: Check on the TV**, playing YouTube with sound:
   1. Red, then Yellow. Expected: the screen dims, then brightens; the pill appears top right each time. `adb exec-out screencap -p > shot.png` shows it; look at the screenshot.
   2. Green (backlight 60, Warm), then `adb shell settings put global picture_backlight 50`, then hold Green 2 s. Expected: "Saved to Evening · Backlight 50 · Warm" pill, and the picture doesn't change. Put the default back: `settings put global picture_backlight 60`, hold Green again.
-  3. Long-press MENU. Expected: the same Settings screen as before, and no pill.
-  4. Blue. Expected: the picture goes off and the sound continues. Then OK: the picture comes back and the video doesn't pause.
+  3. Hold Green 4 s (past the remote's 3 s cap). Expected: the "Saved to Evening" pill, and the video keeps playing (the follow-up `MEDIA_PAUSE` was swallowed).
+  4. Long-press MENU. Expected: the same Settings screen as before, and no pill.
+  5. Blue. Expected: the picture goes off and the sound continues. While it's off, run `adb shell dumpsys power | grep -i wakefulness`. Record the result: if it isn't `Awake`, Task 8's screen-off receiver must ignore picture-off (see Task 8). Then OK: the picture comes back and the video doesn't pause.
+  6. Hold Blue 4 s. Expected: the picture stays off, and Magic Board doesn't open. Then OK brings it back.
+  7. On an HDMI input: Red, then MENU. Expected: the pill shows over the HDMI picture, and Haier's own HDMI menu doesn't open (MENU opens nothing yet). If the firmware takes either key first, stop and tell the user.
 - [ ] **Step 5: Log** the reinstall and every setting the checks changed in `../tvs/haier/changes.md`. **Commit** `"Service: settings I/O, presets on colour keys, screen off, corner pill"`.
 
 ### Task 7: The bar view
 
 **Files:**
 - Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/BarView.kt`: `class BarView(ctx: Context) : FrameLayout` with `fun render(state: UiState, c: Controller, tiles: Map<TileId, Tile>)`.
-- Modify: `QuickService.kt`: add the bar overlay at `Gravity.BOTTOM`, full width, and re-render after every handled key. Use a `Handler` for the 8 s `timeoutClose()`, restarting it on each key.
+- Modify: `QuickService.kt`: add the bar overlay at `Gravity.BOTTOM`, full width, and re-render after every handled key, after a timeout close and after a refresh.
 
 **What the view must show** (everything comes from the spec's "The bar" and "Tile types"):
-- Dark translucent strip, about 60% black, rounded 13dp, inset about 3% from the sides and 5% from the bottom. A horizontal row of tiles, with the focused one scrolled into view (centred when possible) and chevrons at the ends when there's more.
+- Dark translucent strip, about 60% black, rounded 13dp, inset about 3% from the sides and 5% from the bottom. A horizontal row of tiles, with the focused one scrolled into view (centred when possible) and chevrons at the ends when there's more. The screen is 960 dp wide (1920×1080 at 320 dpi), so the 8 tiles don't all fit. Use the platform `HorizontalScrollView`: `smoothScrollTo` the focused tile, and show the chevrons from `canScrollHorizontally(-1/1)`. Every view stays non-focusable and nothing calls `requestFocus`: the Controller owns focus.
 - Unfocused tiles: about 12% white, a white hairline border, white text, the icon and name on top, the value at the bottom. Focused tile: solid white with dark text, about 1.3× the width and about 1.15× the height. Size the base width so the longest tile name fits at the TV's font size; the focused tile must never clip.
-- Level tiles show the number plus a vertical segmented bar (`segments` blocks). When focused, ▲ appears above and ▼ below, each hidden at its limit. Mode and sleep tiles, when focused, show three lines: ▲ previous / current / ▼ next, with the empty end blank. Picture/Sound show "OK ⋯". Action tiles show "Press OK". The list pane sits above the focused tile, with a tick on the current option and the highlight inverted.
-- Edit mode: every tile, with hidden ones faded (about 40% opacity), a dashed border and an eye-off mark. A focused hidden tile is greyed (about 55% white with grey text). The held tile lifts about 8dp and says "Moving". A label above the bar reads "Editing the bar · Back done".
-- Icons: use vector drawables you draw yourself in `res/drawable/` (simple strokes), or a Unicode glyph where a drawable isn't worth it. Don't add an icon library.
+- Level tiles show the number plus a vertical segmented bar (`100 / BACKLIGHT_STEP` = 10 blocks). When focused, ▲ appears above and ▼ below, each hidden at its limit. Mode and sleep tiles, when focused, show three lines: ▲ previous / current / ▼ next, with the empty end blank. Picture/Sound show "OK ⋯". Action tiles show "Press OK". The list pane sits above the focused tile, with a tick on the current option and the highlight inverted.
+- Icons: vector drawables you draw yourself in `res/drawable/` (simple strokes, a few lines of XML each). Don't use Unicode glyphs (the TV font may lack them) and don't add an icon library. If an icon doesn't read on the TV, drop it rather than redraw it.
 
 - [ ] **Step 1: Implement `BarView`** to the rules above.
 - [ ] **Step 2: Build and install** (TV free?), and walk through these with the user. Take a screencap after each, check it, and fix anything that differs from the spec before moving on:
   1. MENU opens the bar.
   2. Up/Down on Backlight change the backlight live.
-  3. Left from the first tile goes to Edit.
-  4. OK on Picture shows the pane.
-  5. Edit: hide Output, then move Sleep.
-  6. MENU closes the bar. After a reboot the layout is kept.
-  7. After 8 s idle, the bar closes.
-  8. Warmth by eye: User → Cool → Standard → Warm on a white or grey screen. The user confirms each looks different, and that Warm is clearly warmer. (Task 0 only saw the firmware accept the value.)
-  9. Output with the ARC audio system on: switch to External audio system and back. The sound moves to the system and back to the TV speakers. If it doesn't, stop and ask the user: the Output tile is dropped (spec: no half-working tiles).
-  10. Projectivy: with the Picture pane open, press Back twice quickly. Projectivy also sees both presses (every filtering service gets each key, even one another service consumed), so its Back double press may start the screensaver. Also press MENU twice quickly, and check Projectivy's "Menu double press" setting. If either fires, tell the user. The options are to set that Projectivy action to nothing, or to make one Back close the whole bar.
+  3. Left from the first tile goes to Screen off (the last), and the row scrolls with the chevrons right.
+  4. OK on Picture shows the pane. Pick another mode: the Backlight tile then shows that mode's backlight, not the old value.
+  5. MENU closes the bar.
+  6. After 8 s idle, the bar closes.
+  7. Warmth by eye: User → Cool → Standard → Warm on a white or grey screen. The user confirms each looks different, and that Warm is clearly warmer. (Task 0 only saw the firmware accept the value.)
+  8. Output with the ARC audio system on: switch to External audio system and back. The sound moves to the system and back to the TV speakers. If it doesn't, stop and ask the user: the Output tile is dropped (spec: no half-working tiles).
+  9. Projectivy: with the Picture pane open, press Back twice quickly. Projectivy also sees both presses (every filtering service gets each key, even one another service consumed), so its Back double press may start the screensaver. Also press MENU twice quickly, and check Projectivy's "Menu double press" setting. If either fires, tell the user. The options are to set that Projectivy action to nothing, or to make one Back close the whole bar.
 - [ ] **Step 3: Commit** `"Bar view"`.
 
 ### Task 8: Sleep timer runtime and standby
@@ -376,22 +352,25 @@ This is the core. The service sends every key here and acts on the returned effe
 
 Task 0 result: the TV's sleep timer key (`tv_timer_sleep_timer_entry_values`) only mirrors the menu, and writing it starts nothing. So the app keeps its own countdown and turns the TV off at zero with the standby method Task 1 Step 9 confirmed.
 
-- [ ] **Step 1: Implement the countdown.** Store `endAt = SystemClock.elapsedRealtime() + min·60000` and `started`. Tick every 15 s, plus exactly at the 1-min mark. On each tick:
-  - Set `controller.sleepLeftMin = minutesLeft(…)`, and re-render the bar if it's open so "23 min left" stays current.
-  - If `reminderCrossed(prev, now, started)` returns a value, show `Pill("Sleeping in ${fmtMinutes(m)}", "Sleep timer", null, 3000)`.
-  - If `lastMinute(now)` is true and the warning isn't up yet, call `controller.showSleepWarning()` and show `Pill("Sleeping in 1 min", "The TV will turn off", null, 0)` with the OK/Back choices drawn as key caps ("OK +N min", "Back Dismiss"), N = `extensionMin(started)`.
-  - At zero, run the standby method, then `clearSleepWarning()` and reset.
+- [ ] **Step 1: Implement the countdown.** Store `endAt = SystemClock.elapsedRealtime() + ms` and `started`. One function, `schedule(msLeft)`, cancels every pending sleep callback and posts each event once with `Handler.postDelayed` (no tick loop):
+  - each `m` in `remindersAhead(started, msLeft)`, at `msLeft - m·60000`: `Pill("Sleeping in $m min", "Sleep timer", null, 3000)`;
+  - at `msLeft - 60000` (or now, if less is left): `controller.showSleepWarning()` and `Pill("Sleeping in 1 min", "The TV will turn off", null, 0)`, with the OK/Back choices drawn as key caps ("OK +N min", "Back Dismiss"), N = `extensionMin(started)`. It fires once, so a dismissed warning doesn't come back;
+  - at `msLeft`: `clearSleepWarning()`, reset, then the standby method.
 
-  `SetSleep(n)` restarts with `started = n`; `SetSleep(0)` cancels everything. `ExtendSleep(n)` moves `endAt` by n minutes and leaves `started` alone. The countdown lives in memory: if the service restarts, the timer is gone (*ponytail: in-memory timer; persist `endAt` if restarts turn out to happen*).
+  `SetSleep(n)` sets `started = n` and calls `schedule(n·60000)`; `SetSleep(0)` cancels everything. `ExtendSleep(n)` moves `endAt` by n minutes, leaves `started` alone and calls `schedule(endAt - now)`. Before every `onKey` call and every render, set `controller.sleepLeftMin = minutesLeft(endAt - now)` (0 when off), so "23 min left" and the Up/Down steps are always current without a tick. While `state.warning` is on, skip any other `Pill`, so the warning can't be replaced by a 2 s pill and then sit there invisibly taking OK and Back.
+
+  `Handler` counts uptime, which stops in deep sleep; that's fine, because the screen holds the TV awake while a timer runs, and the receiver below cancels the timer when the TV goes off.
+
+  **Screen-off receiver:** register for `Intent.ACTION_SCREEN_OFF`. If `PowerManager.isInteractive` is still true (picture-off, if Task 6 Step 4.5 found it sends this broadcast), ignore it. Otherwise cancel the sleep timer and call `controller.screenWentOff()`. This stops a timer the user didn't finish (TV turned off with the remote) from putting the TV back into standby when it's next turned on. Our own standby at zero lands here too, which is harmless.
+
+  The countdown lives in memory: if the service restarts, the timer is gone (*ponytail: in-memory timer; persist `endAt` if restarts turn out to happen*).
 - [ ] **Step 2: Verify on the TV** (TV free?).
   - Set a 10-min sleep. The tile shows the minutes left, and Up shows 15 min.
-  - To test without waiting, add `DEBUG_SLEEP` to Task 1's debug-only receiver: `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000` sets the remaining time. (The receiver is only registered when `BuildConfig.DEBUG`, so the release build doesn't have it.)
-  - The last-minute pill appears. OK gives "+10 min" and the countdown jumps. Run it again, press Back, and the TV goes to standby at zero.
+  - To test without waiting, add `DEBUG_SLEEP` to Task 1's debug-only receiver: `adb shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_SLEEP --ei ms 65000` sets the remaining time by calling `schedule(ms)` (the same path as `SetSleep`). (The receiver is only registered when `BuildConfig.DEBUG`, so the release build doesn't have it.)
+  - The last-minute pill appears. OK gives "+10 min" and the countdown jumps. Run it again, press Back: the pill doesn't come back, and the TV goes to standby at zero.
+  - Set a 10-min sleep, turn the TV off with the power button, and turn it on again. Expected: it stays on, and the Sleep tile shows Off.
+  - Set a 10-min sleep, press Blue (picture off), then `DEBUG_SLEEP` 65000. Expected: the timer still runs (the TV goes to standby at zero), so picture-off doesn't cancel it.
 - [ ] **Step 3: Commit** `"Sleep timer runtime and standby"`.
-
-### Task 9: Screen off (merged into Task 6)
-
-Screen off is a plain `Write("power_picture_off", 0/1)` from the Controller, so it's built in Task 5 and checked on the TV in Task 6 Step 4. Nothing is left here; the number is kept so the other tasks don't move.
 
 ### Task 10: Release build, setup notes, hand-over
 

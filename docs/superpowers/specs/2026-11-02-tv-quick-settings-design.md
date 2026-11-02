@@ -1,6 +1,6 @@
 # TV Quick Settings: design
 
-Date: 2026-11-02. Status: design and look agreed with the user (mocks done). TV tests done (Task 0, see `docs/haier-tests.md`): Blue light became Warmth; Dialogue and Ambient were dropped.
+Date: 2026-11-02. Status: design and look agreed with the user (mocks done). TV tests done (Task 0, see `docs/haier-tests.md`): Blue light became Warmth; Dialogue and Ambient were dropped. Plan review (2026-11-02, `docs/superpowers/reviews/`): edit mode was dropped, so the tile order is fixed in code.
 
 ## Why
 
@@ -40,7 +40,7 @@ The remote is a Haier HTR-U27E (Bluetooth). Its raw codes are in `docs/haier-tes
 | Red | Night preset |
 | Green | Evening preset |
 | Yellow | Day preset |
-| Long press of Red/Green/Yellow | Save the current backlight + warmth into that preset (like a car radio's preset buttons). It happens on release, after a hold of 1 s or more, because the app gets no key repeats and can only measure how long the key was down. *My call; the mocks may change it.* |
+| Long press of Red/Green/Yellow | Save the current backlight + warmth into that preset (like a car radio's preset buttons). It happens on release, after a hold of 1 s or more, because the app gets no key repeats and can only measure how long the key was down. *My call; the mocks may change it.* A hold of 3 s or more makes the remote send its own follow-up key (Red 130, Green 127, Yellow 86, Blue 217); the app swallows it, so a held Green doesn't also pause the video and a held Blue doesn't open Magic Board. |
 | Blue | Screen off (the sound keeps playing). Any button turns the picture back on; that press is swallowed so it doesn't also pause or skip the video (*my call*). |
 | Everything else | Unchanged. |
 
@@ -59,7 +59,7 @@ Look and behaviour were settled with the user through interactive mocks (the las
 - **The focused tile** is solid white with dark text, only a little larger than the others (about 1.3× wider and slightly taller). The user rejected a big jump in size. Names must not be clipped, so use a width that fits the longest name.
 - **Left/Right** moves focus and **wraps around**: Left on the first tile goes to the last, and Right on the last goes to the first.
 - **Up/Down** changes the focused tile's value and applies it at once, one step per press (holding the key doesn't keep stepping). The tile is laid out so the direction of the press is obvious (below).
-- **Back** or **MENU** closes the bar. It also closes after about 8 seconds without a press, except in edit mode (*my call*).
+- **Back** or **MENU** closes the bar. It also closes after about 8 seconds without a press (*my call*).
 - The video keeps playing underneath.
 
 ### Tile types
@@ -70,10 +70,9 @@ Look and behaviour were settled with the user through interactive mocks (the las
   - Picture and Sound have an **"OK ⋯"** hint. OK opens a **list pane** above the tile with every option and a tick on the current one. Up/Down moves the highlight, OK picks and Back closes the pane.
   - Warmth, Preset and Output have no pane, because Up/Down covers their few options.
 - **Sleep**: see "Sleep timer" below. No pane.
-- **Action** (Screen off): the focused tile says "Press OK".
-- **Edit**: always the last tile, and it can't be hidden. See "Editing the bar".
+- **Action** (Screen off): the focused tile says "Press OK". OK does the same as Blue.
 
-### Tiles (default order)
+### Tiles (in order)
 
 1. **Backlight**
 2. **Warmth**: the TV's own Colour Temperature, User / Cool / Standard / Warm (`picture_color_temperature` 0 / 1 / 2 / 3). This is the night mode: the TV has no working blue-light key, and its "Warm" is what other brands sell as a low-blue mode. Research says total brightness matters more than colour for sleep, so Backlight stays first.
@@ -83,18 +82,10 @@ Look and behaviour were settled with the user through interactive mocks (the las
 6. **Output**: TV Speakers / External audio system (HDMI ARC).
 7. **Sleep**
 8. **Screen off**: OK turns the picture off and the sound keeps playing. Any button turns it back on.
-9. **Edit**
 
 Dropped after the TV tests: **Blue light** (the key does nothing visible), **Dialogue** (no such option on this TV), and **Ambient** (Projectivy already starts the screensaver on a Back double press).
 
-### Editing the bar
-
-- OK on the Edit tile enters edit mode, and a small label "Editing the bar · Back done" appears above the bar. The row then shows **every** tile, including hidden ones.
-- Hidden tiles are **dimmed**: faded, with a dashed border and an eye-off mark. A focused hidden tile stays greyed out instead of turning bright white. Each tile says Shown or Hidden.
-- **Up/Down** toggles shown/hidden.
-- **OK** picks the tile up (it lifts slightly and says "Moving"). **Left/Right** moves it, and it stops at the ends rather than wrapping (*my call*). **OK** drops it.
-- **Back** leaves edit mode.
-- The order and the hidden tiles are saved in the app's storage.
+Dropped in the plan review: **Edit** (hiding and reordering tiles). The order above is a constant in the code; change it there. It can come back later as its own task.
 
 ## Sleep timer
 
@@ -102,7 +93,9 @@ Dropped after the TV tests: **Blue light** (the key does nothing visible), **Dia
 - **When off**, the tile shows "Off" with "▲ 10 min".
 - **Once running**, the main text is the **actual time left** ("23 min left"), and the ▲/▼ lines show the next step above and below the time left (e.g. 30 min / 15 min). Pressing one restarts the timer at that value. Down from below the smallest step shows **Off**, which cancels the timer. Unfocused, the tile shows only the time left.
 - **When it reaches zero**, the TV goes to standby, the same as pressing power, and it wakes the usual way. The Haier's own sleep timer can't be started by writing its key, so the app keeps the countdown and puts the TV in standby itself (method checked in the build).
-- **Reminders:** a short corner pill (about 3 s), "Sleeping in 30 min", when the time left passes 1 h, 30, 15 and 5 min. Only the steps shorter than the timer's length fire.
+- Times are always shown in minutes ("90 min left").
+- **Turning the TV off another way** (the power button) cancels the timer, so it can't put the TV back into standby when it's next turned on. Screen off doesn't cancel it.
+- **Reminders:** a short corner pill (about 3 s), "Sleeping in 30 min", when the time left passes 60, 30, 15 and 5 min. Only the steps shorter than the timer's length fire.
 - **Last minute:** the pill stays up and says "Sleeping in 1 min · The TV will turn off" with two clearly shown choices:
   - **OK** extends the timer by 15 min, or by the timer's original length if that was shorter, so a 10‑min timer offers "+10 min".
   - **Back** hides the pill, and the TV still turns off.
@@ -121,7 +114,7 @@ Dropped after the TV tests: **Blue light** (the key does nothing visible), **Dia
 - While the bar is open, the service also catches the arrows, OK and Back and drives the bar itself. The overlay window never takes input focus, so the video player isn't disturbed. *My call*; it avoids focus problems over video.
 - The bar and the popup are drawn as an **accessibility overlay window**, so no "draw over other apps" permission is needed.
 - Settings are changed by writing `Settings.Global` keys (see `docs/haier-global-settings.txt`). That needs `WRITE_SECURE_SETTINGS`, which is granted once over adb and survives reboots and USB debugging being off.
-- The app reads the current values when the bar opens, so it stays in sync with changes made through the TV's own menus.
+- The app reads the current values when the bar opens or a colour button is pressed, so it stays in sync with changes made through the TV's own menus. It reads them again after switching Picture mode, because the TV keeps a backlight (and maybe warmth) per picture mode.
 
 ### Setting keys to confirm on the TV
 
@@ -157,6 +150,8 @@ To undo: turn the service off, or uninstall the app. Settings the app changed st
 - The colour buttons all arrive as the same Linux key (`KEY_UNKNOWN`) and differ only by HID usage. If Android doesn't map them to different keycodes, the presets are only reachable from the bar.
 - Projectivy's accessibility service also filters keys. Both services see each press, even one the other consumes. So two quick Backs that close the pane and then the bar can also trigger Projectivy's Back double press (screensaver), and two quick MENU presses its "Menu double press". Checked on the TV in the bar build; the fix is to clear that Projectivy action or let one Back close the whole bar.
 - **No key repeats reach the app** (most likely: accessibility services see keys before Android makes repeats). Long presses are measured from how long the key was held, and holding Up/Down steps once. The first build logs this to confirm.
+- **Picture off may look like "screen off" to Android.** If `power_picture_off 0` makes Android report the screen as off, the "TV turned off" check must ignore it, or Screen off would cancel the sleep timer. Checked on the TV in the service build.
+- **HDMI/Live TV may take MENU or the colour keys** (teletext) before the app sees them. The key log only ran in YouTube; checked on HDMI in the service build.
 - **Standby at the end of the sleep timer** relies on the accessibility "lock screen" action putting the TV to sleep. The first build checks it before the timer is built.
 
 ## Left to the builder
