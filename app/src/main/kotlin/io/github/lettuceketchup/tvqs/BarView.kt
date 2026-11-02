@@ -32,8 +32,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         isFocusable = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
-        isHorizontalFadingEdgeEnabled = true // tiles fade out at the edges instead of being cut
-        setFadingEdgeLength(px(24))
+        // No fading edges: they draw the row into an offscreen layer each frame, which held scrolling to 30 fps on the TV.
         addView(row)
         setOnScrollChangeListener { _, _, _, _, _ -> updateChevrons() }
         addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateChevrons() }
@@ -81,7 +80,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         }
         visibility = if (state.barOpen) VISIBLE else GONE
         if (!state.barOpen) return
-        tileViews.forEachIndexed { i, v -> v.update(c, i == state.focus) }
+        tileViews.forEachIndexed { i, v -> v.update(c, i == state.focus, animate = !opening) }
 
         // Centre the focused tile. All tiles before it are unfocused and the row's width never changes,
         // so the target is plain arithmetic, valid before this frame's layout.
@@ -173,9 +172,15 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
             layoutParams = LayoutParams(tileW, tileH).apply { marginEnd = gap }
         }
 
-        fun update(c: Controller, focused: Boolean) {
+        fun update(c: Controller, focused: Boolean, animate: Boolean) {
             val fg = if (focused) DARK else Color.WHITE
             if (focused != this.focused) {
+                // Grow or shrink from the old size with scale: animating the size itself would re-layout every frame.
+                if (animate && this.focused != null) {
+                    scaleX = if (focused) tileW / focusW.toFloat() else focusW / tileW.toFloat()
+                    scaleY = if (focused) tileH / focusH.toFloat() else focusH / tileH.toFloat()
+                    animate().scaleX(1f).scaleY(1f).setDuration(FOCUS_MS)
+                }
                 this.focused = focused
                 background = if (focused) solid else plain
                 layoutParams = (layoutParams as LayoutParams).apply { width = if (focused) focusW else tileW; height = if (focused) focusH else tileH }
@@ -312,6 +317,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         const val HINT_SP = 11f
         const val NUMBER_SP = 22f
         const val HINT = "OK …"
+        const val FOCUS_MS = 150L
         val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         val ICONS = mapOf(
             TileId.BACKLIGHT to R.drawable.ic_backlight, TileId.WARMTH to R.drawable.ic_warmth,
