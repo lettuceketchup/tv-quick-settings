@@ -26,7 +26,7 @@
 - Bar auto-closes after 8 s without a key press. Normal pills last 2 s, sleep reminders 3 s, and the last-minute pill stays until answered or the timer ends.
 - Copy is sentence case, e.g. "Sleeping in 1 min", "The TV will turn off", "Press OK", "OK ⋯".
 - Plan review (2026-11-02): `docs/superpowers/reviews/2026-11-02-review-pass1.md` to `-pass3.md` explain the changes below (H1–H4, M1–M4, P1–P4 refer to them).
-- **Emulator demo before the TV** (user, 2026-11-02): every task that changes what's on screen (6, 7, 8) runs its scripted demo on the `haier_tv` emulator after the build and before the TV install, and sends the user the video and screenshots with SendUserFile. The emulator is not a Haier: the Haier setting keys are seeded so the app reads sane values, and writes land in `Settings.Global` (the demo log shows them), but the picture doesn't actually dim, warm or turn off. Say so with each demo. Emulator commands always use `adb -s emulator-5554`, **never `adb -e`** (that means "the TCP/IP device", which is the TV when it's connected). Scripted keys go through `DEBUG_KEY` (Task 5a), so a demo doesn't exercise the key filter or pass-through; the TV checks do. The emulator itself, `avdmanager` and `sdkmanager` run in the user's terminal tab (AppData redirect, see Task 1 Step 2).
+- **Emulator demo before the TV** (user, 2026-11-02): every task that changes what's on screen (6, 7, 8) runs its scripted demo on the `haier_tv` emulator after the build and before the TV install, and sends the user the video and screenshots with SendUserFile. The emulator is not a Haier: the Haier setting keys are seeded so the app reads sane values, and writes land in `Settings.Global` (the demo log shows them). From Task 6, a debug-only `SimView` imitates backlight, warmth and picture-off on a grey backdrop; it's an approximation of the panel, so say so with each demo. The panel is 4K, but Android draws at 1920×1080 (the only display mode, read from the TV 2026-11-02) and the TV upscales it 2×, so the emulator's layout matches but its text looks sharper than the TV's. Emulator commands always use `adb -s emulator-5554`, **never `adb -e`** (that means "the TCP/IP device", which is the TV when it's connected). Scripted keys go through `DEBUG_KEY` (Task 5a), so a demo doesn't exercise the key filter or pass-through; the TV checks do. The emulator itself, `avdmanager` and `sdkmanager` run in the user's terminal tab (AppData redirect, see Task 1 Step 2).
 
 ## Review Focus
 
@@ -352,7 +352,7 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
   - Start the emulator (the command above), then run the script with `demo/task7.txt` (or the latest demo) to install the build.
   - Drive it in the emulator window with the arrow keys, Enter and Esc, as far as Step 4 found that works.
   - Any key can be sent with `adb -s emulator-5554 shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --ei code <keycode>`: MENU is 82 and Red/Green/Yellow/Blue are 183–186.
-  - Picture changes don't show on the emulator.
+  - From Task 6, backlight, warmth and picture-off are simulated on a grey backdrop (darkening and a tint), not the real panel.
 - [ ] **Step 6: Commit** `"Emulator demo harness"`.
 
 ### Task 6: Service wiring, settings I/O, screen off and the corner pill
@@ -360,6 +360,7 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
 **Files:**
 - Modify: `QuickService.kt`
 - No `Store.kt`: the only stored data is the presets, so the service keeps them in SharedPreferences `"tvqs"` under `"presets"` (`"Day:100:2;Evening:60:3;Night:20:3"`), with a load and a save function. Bad data falls back to `DEFAULT_PRESETS`.
+- Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/SimView.kt`: the emulator-only picture simulation (Step 1).
 - Create: `app/src/main/kotlin/io/github/lettuceketchup/tvqs/PillView.kt`: `class PillView(ctx: Context) : LinearLayout` with `fun show(p: Effect.Pill)`. The look is in the spec's "Remote buttons": top-right, about 75% black, rounded 14dp, icon, title, detail and a 4dp level bar.
 
 **Interfaces:**
@@ -371,6 +372,13 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
   - `Write` uses `Settings.Global.putInt`; that covers screen off/on too (`power_picture_off`). Wrap each write in `try/catch (SecurityException)`; on failure, show a pill "Permission missing · Grant WRITE_SECURE_SETTINGS over adb" instead of crashing.
   - **Timeout:** a `Handler` calls `timeoutClose()` 8 s after the last key while the bar is open, restarted on each key. It's here and not in Task 7, so a MENU pressed during this task's checks can't leave an invisible bar swallowing the arrows.
   - Leave `SetSleep`/`ExtendSleep` as TODO no-ops for now; Task 8 fills them in. Keep Task 1's key log in debug builds.
+  - **Picture simulation (emulator only, user request 2026-11-02).** The emulator has no Haier panel, so in the demos nothing would visibly change. When `BuildConfig.DEBUG && Build.HARDWARE == "ranchu"` (the emulator), `onServiceConnected` adds a `SimView` with `overlay(simView, Gravity.FILL)`, with the params set to `MATCH_PARENT` width and height, **before** the pill and the bar, so it sits under them. `SimView` is a plain `View` with `fun update(backlight: Int, warmth: Int, pictureOff: Boolean)` that stores the values and calls `invalidate()`. Its `onDraw` paints, in order:
+    - an opaque light grey (`#C8C8C8`) "picture" (the launcher is too dark to show warmth);
+    - the warmth tint: Warm (3) `#FF9A3C` at 18% alpha, Cool (1) `#5AA0FF` at 12%, and nothing for Standard (2) or User (0);
+    - black at `(100 - backlight) * 0.8 / 100` alpha, so 100 is clear and 20 is mostly dark;
+    - opaque black when `pictureOff`.
+
+    The service calls `simView?.update(...)` with fresh `Settings.Global` reads of `picture_backlight`, `picture_color_temperature` and `power_picture_off` after every drained `Write` and after every `refresh`. On the TV and in release builds `simView` stays null. It's an approximation; say so with each demo.
   - All of this goes in Task 5a's `handleKey(keyCode, down, heldMs)`, which `onKeyEvent` already calls, so `DEBUG_KEY` presses take the same path. Keep its log line with `consumed=`.
 - [ ] **Step 2: Build** with `./gradlew assembleDebug testDebugUnitTest`. Expected: success.
 - [ ] **Step 2a: Emulator demo.** Write `demo/task6.txt` and run it with `tools/demo.ps1`:
@@ -393,13 +401,17 @@ A TV-sized Android TV emulator plus one script that installs the debug build, pl
   wait 0.5
   shot day
   key PROG_BLUE
+  wait 0.5
+  shot picture-off
   shell settings get global power_picture_off
   key DPAD_CENTER
+  wait 0.5
+  shot picture-back
   shell settings get global power_picture_off
   wait 3
   shot end
   ```
-  Expected in `log.txt`: backlight `20` after Red, `0` then `1` around Blue/OK, and both `MEDIA_PAUSE` lines `consumed=true` (rule 0). Expected in the PNGs: the pill top right on `night` ("Night · Backlight 20 · Warm"), `evening`, `saved-evening` ("Saved to Evening · Backlight 50 · Warm") and `day`, and no pill on `start` and `end`. Look at each PNG against the spec's pill description (position, size at 1080p, legibility), fix what differs, and rerun. Then send the user `demo.mp4` and the PNGs, with the note that the picture itself doesn't change on the emulator. Proceed to the TV install only after the user has seen the demo.
+  Expected in `log.txt`: backlight `20` after Red, `0` then `1` around Blue/OK, and both `MEDIA_PAUSE` lines `consumed=true` (rule 0). Expected in the PNGs: the pill top right on `night` ("Night · Backlight 20 · Warm"), `evening`, `saved-evening` ("Saved to Evening · Backlight 50 · Warm") and `day`, and no pill on `start` and `end`. The simulated picture: `start` and `day` bright neutral grey, `night` dark and amber, `evening` mid-dark and amber, `picture-off` black, and `picture-back` the same as before Blue. Look at each PNG against the spec's pill description (position, size at 1080p, legibility), fix what differs, and rerun. Then send the user `demo.mp4` and the PNGs, with the note that the dimming and tint are a simulation. Proceed to the TV install only after the user has seen the demo.
 - [ ] **Step 3: Reinstall on the TV (ask the user whether the TV is free first):** `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The grant and the accessibility service from Task 1 stay; check with `adb shell settings get secure enabled_accessibility_services`.
 - [ ] **Step 4: Check on the TV**, playing YouTube with sound:
   1. Red, then Yellow. Expected: the screen dims, then brightens; the pill appears top right each time. `adb exec-out screencap -p > shot.png` shows it; look at the screenshot.
