@@ -7,7 +7,7 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 ## Next steps
 
 1. Design: done, see `docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md`.
-2. Plan (superpowers:writing-plans), then install the build tools (JDK + Android command-line tools) and build.
+2. Plan: done, see `docs/superpowers/plans/2026-11-02-tv-quick-settings.md`. Execute it task by task (user chose to start dev in a fresh session; recommended: native execution via superpowers:executing-plans). Task 0 needs the user present and the TV free.
 
 ## TV access
 
