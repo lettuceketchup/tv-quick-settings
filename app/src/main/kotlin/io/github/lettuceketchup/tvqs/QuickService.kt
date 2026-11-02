@@ -5,9 +5,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -28,6 +30,15 @@ class QuickService : AccessibilityService() {
     private var simView: SimView? = null
     private val handler = Handler(Looper.getMainLooper())
     private val timeout = Runnable { controller.timeoutClose(); render() }
+
+    // The TV changes values itself (each picture mode keeps its own backlight, and its menu can change any key),
+    // and late: a fixed 300 ms re-read after a picture_mode write still saw the old mode's backlight.
+    private val observer = object : ContentObserver(handler) {
+        override fun onChange(selfChange: Boolean, uri: Uri?) {
+            Log.d(TAG, "changed ${uri?.lastPathSegment}")
+            refresh()
+        }
+    }
 
     // Debug-only adb hooks: `adb shell am broadcast -a <action>`.
     private val debugReceiver = object : BroadcastReceiver() {
@@ -56,6 +67,9 @@ class QuickService : AccessibilityService() {
         bar = BarView(this)
         overlay(bar, Gravity.BOTTOM) { width = MATCH }
         refresh()
+        for (k in listOf(KEY_BACKLIGHT, KEY_WARMTH, KEY_PICTURE, KEY_SOUND, KEY_OUTPUT)) {
+            contentResolver.registerContentObserver(Settings.Global.getUriFor(k), false, observer)
+        }
         if (BuildConfig.DEBUG) {
             registerReceiver(debugReceiver, IntentFilter(DEBUG_STANDBY).apply { addAction(DEBUG_KEY) })
         }
@@ -110,8 +124,6 @@ class QuickService : AccessibilityService() {
             pill.show(Effect.Pill("Permission missing", "Grant WRITE_SECURE_SETTINGS over adb", null, 4000))
             return
         }
-        // The TV keeps backlight (maybe warmth) per picture mode and updates them itself.
-        if (key == KEY_PICTURE) handler.postDelayed({ refresh() }, 300)
     }
 
     private fun read(key: String, default: Int) = Settings.Global.getInt(contentResolver, key, default)
@@ -138,6 +150,7 @@ class QuickService : AccessibilityService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        contentResolver.unregisterContentObserver(observer)
         if (BuildConfig.DEBUG) unregisterReceiver(debugReceiver)
         super.onDestroy()
     }
