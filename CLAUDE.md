@@ -21,7 +21,7 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 13. Task 8 (sleep timer runtime and standby): done 2026-11-03, emulator demo and all four TV checks passed; result and the picture-off fix under Task 8 in the plan.
 14. Task 10 (release build, full check, hand-over): done 2026-11-03. The release build is on the TV; the full check and the USB-debugging-off reboot passed. The user also asked for a restyled bar (pill tiles), smoother animations, a chunked backlight bar and a pane that stays open after a pick; see Task 10 in the plan. Task 4 and Task 9 are intentionally empty.
 15. **Next: the final whole-branch review** (superpowers:executing-plans, fresh reviewer), then push `main` once the user approves. Open: Task 7 check 8 (Output with an ARC system), and whether a held Blue should do nothing (it turns the picture off on release now).
-16. Later (user, 2026-11-03): fade the partly visible tiles at the row's ends again. Don't bring back the scroll view's fading edges (their offscreen layer held scrolling to 30 fps on the TV); try a fixed strip-coloured gradient view over each end instead, and measure with `dumpsys gfxinfo framestats`.
+16. Later (user, 2026-11-03): fade the partly visible tiles at the row's ends again. Don't bring back the scroll view's fading edges (their offscreen layer held scrolling to 30 fps on the TV); try a fixed strip-coloured gradient view over each end instead, and measure with `dumpsys gfxinfo framestats`. Also put each unfocused tile's name beside its icon again (as before the restyle, with the value at the bottom) instead of under it, and make the tiles a little shorter.
 
 ## TV access
 
