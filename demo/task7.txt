@@ -1,0 +1,30 @@
+shell settings put global picture_backlight 37
+key MENU
+wait 1
+shot open
+key DPAD_UP
+key DPAD_UP
+shell settings get global picture_backlight
+shot backlight-up
+key DPAD_LEFT
+wait 1
+shot wrapped-to-screen-off
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_RIGHT
+key DPAD_RIGHT
+wait 1
+shot picture-focused
+key DPAD_CENTER
+wait 1
+shot picture-pane
+key DPAD_DOWN
+key DPAD_CENTER
+wait 1
+shot picture-picked
+key MENU
+wait 1
+shot closed
+key MENU
+wait 9
+shot timed-out

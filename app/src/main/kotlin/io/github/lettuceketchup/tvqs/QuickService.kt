@@ -22,10 +22,12 @@ import android.view.accessibility.AccessibilityEvent
 class QuickService : AccessibilityService() {
 
     private lateinit var controller: Controller
+    private val tiles = defaultTiles()
     private lateinit var pill: PillView
+    private lateinit var bar: BarView
     private var simView: SimView? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val timeout = Runnable { controller.timeoutClose() }
+    private val timeout = Runnable { controller.timeoutClose(); render() }
 
     // Debug-only adb hooks: `adb shell am broadcast -a <action>`.
     private val debugReceiver = object : BroadcastReceiver() {
@@ -43,7 +45,7 @@ class QuickService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
-        controller = Controller(defaultTiles(), parsePresets(prefs().getString("presets", null)))
+        controller = Controller(tiles, parsePresets(prefs().getString("presets", null)))
         // The emulator has no Haier panel, so debug builds there fake one under the overlays.
         if (BuildConfig.DEBUG && Build.HARDWARE == "ranchu") {
             simView = SimView(this).also { overlay(it, Gravity.FILL) { width = MATCH; height = MATCH } }
@@ -51,6 +53,8 @@ class QuickService : AccessibilityService() {
         pill = PillView(this)
         val margin = (32 * resources.displayMetrics.density).toInt()
         overlay(pill, Gravity.TOP or Gravity.END) { x = margin; y = margin }
+        bar = BarView(this)
+        overlay(bar, Gravity.BOTTOM) { width = MATCH }
         refresh()
         if (BuildConfig.DEBUG) {
             registerReceiver(debugReceiver, IntentFilter(DEBUG_STANDBY).apply { addAction(DEBUG_KEY) })
@@ -79,6 +83,7 @@ class QuickService : AccessibilityService() {
         if (!down && (key == Key.MENU || key in COLOURS)) refresh()
         val consumed = controller.onKey(key, down, heldMs)
         drain()
+        render()
         handler.removeCallbacks(timeout)
         if (controller.state.barOpen) handler.postDelayed(timeout, BAR_TIMEOUT_MS)
         Log.d(TAG, "key=$keyCode (${KeyEvent.keyCodeToString(keyCode)}) down=$down held=$heldMs consumed=$consumed")
@@ -120,7 +125,10 @@ class QuickService : AccessibilityService() {
             TileId.OUTPUT to read(KEY_OUTPUT, 0),
         ))
         updateSim()
+        render()
     }
+
+    private fun render() = bar.render(controller.state, controller, tiles)
 
     private fun updateSim() {
         simView?.update(read(KEY_BACKLIGHT, 100), read(KEY_WARMTH, WARMTH_STANDARD), read(KEY_SCREEN_OFF, 1) == 0)
