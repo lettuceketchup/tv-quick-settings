@@ -146,7 +146,7 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
   - `data class Preset(val name: String, val backlight: Int, val warmth: Int)` (backlight 0–100, warmth a raw `picture_color_temperature` value) and `val DEFAULT_PRESETS = listOf(Preset("Day",100,2), Preset("Evening",60,3), Preset("Night",20,3))`. The index order is Day=0, Evening=1, Night=2.
   - `fun defaultTiles(): Map<TileId, Tile>`, built from the Haier constants, holding only the tiles kept in Task 0.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```kotlin
 @Test fun backlightSnapsUpFromOffGrid() = assertEquals(40, stepLevel(37, 10, up = true))
@@ -165,10 +165,10 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 @Test fun presetUnknownIsCustom() = assertEquals("Custom", modeLabel(defaultTiles()[TileId.PRESET] as ModeTile, -1))
 ```
 
-- [ ] **Step 2: Run** `./gradlew testDebugUnitTest`. Expected: FAIL, because the symbols are unresolved.
-- [ ] **Step 3: Implement `Tiles.kt`** with the signatures above.
-- [ ] **Step 4: Run** `./gradlew testDebugUnitTest`. Expected: PASS.
-- [ ] **Step 5: Commit** `git commit -am "Tiles, steps, presets"` (after adding the new files).
+- [x] **Step 2: Run** `./gradlew testDebugUnitTest`. Expected: FAIL, because the symbols are unresolved.
+- [x] **Step 3: Implement `Tiles.kt`** with the signatures above.
+- [x] **Step 4: Run** `./gradlew testDebugUnitTest`. Expected: PASS.
+- [x] **Step 5: Commit** `git commit -am "Tiles, steps, presets"` (after adding the new files).
 
 ### Task 3: Sleep timer maths (pure)
 
@@ -186,7 +186,7 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
   - `fun extensionMin(startedMin: Int): Int = minOf(15, startedMin)`
   - Times are shown as `"$min min"` everywhere, so there's no formatting function.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```kotlin
 @Test fun longerFromOff() = assertEquals(10, nextLonger(0))
@@ -203,10 +203,10 @@ git add -A && git update-index --chmod=+x gradlew && git commit -m "Build setup 
 @Test fun roundsUp() = assertEquals(2, minutesLeft(61_000))
 ```
 
-- [ ] **Step 2: Run** the tests. Expected: FAIL.
-- [ ] **Step 3: Implement `SleepMath.kt`.**
-- [ ] **Step 4: Run** the tests. Expected: PASS.
-- [ ] **Step 5: Commit** `"Sleep timer maths"`.
+- [x] **Step 2: Run** the tests. Expected: FAIL.
+- [x] **Step 3: Implement `SleepMath.kt`.**
+- [x] **Step 4: Run** the tests. Expected: PASS.
+- [x] **Step 5: Commit** `"Sleep timer maths"`.
 
 ### Task 4: removed in the plan review
 
@@ -259,7 +259,7 @@ This is the core. The service sends every key here and acts on the returned effe
      - The pane: Up/Down move the highlight (clamped), OK writes and closes the pane, BACK closes the pane.
      - Normal BACK closes the bar.
 
-- [ ] **Step 1: Write the failing tests.** Use a helper `fun Controller.press(k: Key) { onKey(k, true, 0); onKey(k, false, 100) }` and `fun Controller.hold(k: Key, ms: Long = 3000) { onKey(k, true, 0); onKey(k, false, ms) }`. Build it from `defaultTiles()` and `DEFAULT_PRESETS`, and `refresh` backlight 37, warmth 2, picture 0.
+- [x] **Step 1: Write the failing tests.** Use a helper `fun Controller.press(k: Key) { onKey(k, true, 0); onKey(k, false, 100) }` and `fun Controller.hold(k: Key, ms: Long = 3000) { onKey(k, true, 0); onKey(k, false, ms) }`. Build it from `defaultTiles()` and `DEFAULT_PRESETS`, and `refresh` backlight 37, warmth 2, picture 0.
 
 ```kotlin
 @Test fun menuShortOpensBar() { c.press(Key.MENU); assertTrue(c.state.barOpen) }
@@ -288,10 +288,16 @@ This is the core. The service sends every key here and acts on the returned effe
 ```
 
   Write the comment-only tests as real code. Each comment lists the exact keys and assertions.
-- [ ] **Step 2: Run** the tests. Expected: FAIL.
-- [ ] **Step 3: Implement `Controller.kt`** following the routing rules. Keep the set of DOWN keys it consumed, so each matching UP is consumed too.
-- [ ] **Step 4: Run** the tests. Expected: all of Tasks 2, 3 and 5 PASS.
-- [ ] **Step 5: Commit** `"Controller: key routing, panes, presets, warning"`.
+- [x] **Step 2: Run** the tests. Expected: FAIL.
+- [x] **Step 3: Implement `Controller.kt`** following the routing rules. Keep the set of DOWN keys it consumed, so each matching UP is consumed too.
+- [x] **Step 4: Run** the tests. Expected: all of Tasks 2, 3 and 5 PASS.
+- [x] **Step 5: Commit** `"Controller: key routing, panes, presets, warning"`.
+
+**Done 2026-11-03** (25 tests in `ControllerTest.kt`). Decisions made while building it:
+- The bar always opens on the first tile, and Left/Right inside a pane closes it and moves focus (the user's call, overriding the builder's first version; also in the spec's "The bar").
+- A colour long press saves nothing if backlight or warmth haven't been read yet, so it never saves made-up values.
+- An UP whose DOWN wasn't consumed passes through, even with the bar open, so an app that saw the DOWN doesn't keep a stuck key.
+- From "Custom", the Preset tile steps like an unknown mode: Up goes to Night, Down to Day.
 
 ### Task 5a: Emulator demo harness
 
@@ -319,8 +325,8 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
   - Set `hw.keyboard=yes` in `~/.android/avd/haier_tv.avd/config.ini`, so the PC keyboard drives the emulator window.
   - Start it with `& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd haier_tv`.
   - Checked: `wm size` is 1920x1080, `wm density` is 320 (the Haier's 960 dp), and the release is 11. `screenrecord` works.
-- [ ] **Step 2: Add `handleKey` and `DEBUG_KEY`** to the probe, as in Interfaces. Build with `./gradlew assembleDebug`.
-- [ ] **Step 3: Write `tools/demo.ps1`.** Its argument is the steps file.
+- [x] **Step 2: Add `handleKey` and `DEBUG_KEY`** to the probe, as in Interfaces. Build with `./gradlew assembleDebug`.
+- [x] **Step 3: Write `tools/demo.ps1`.** Its argument is the steps file.
   1. Every adb call uses `adb -s emulator-5554`. **Never `-e`**: it means "the TCP/IP device", which is the TV when that's connected. Abort unless `shell getprop ro.kernel.qemu` is `1`. After each adb call, stop if `$LASTEXITCODE` isn't 0.
   2. Prepare the emulator:
      - wait until `getprop sys.boot_completed` is 1;
@@ -337,7 +343,7 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
      - `shell <command>` runs `adb shell <command>` and logs the output.
      Each line and its output go to `log.txt`.
   6. Stop the recording (`shell pkill -INT screenrecord`, then wait 2 s), pull `demo.mp4`, append `logcat -d -s QuickService` to `log.txt`, and print the output folder.
-- [ ] **Step 4: Write a probe steps file and run it** (with the emulator running). Put it in the scratchpad, not the repo: once Task 6 consumes keys its expected output no longer holds, and `task6.txt` covers the harness from then on.
+- [x] **Step 4: Write a probe steps file and run it** (with the emulator running). Put it in the scratchpad, not the repo: once Task 6 consumes keys its expected output no longer holds, and `task6.txt` covers the harness from then on.
   ```
   shot home
   key MENU
@@ -350,12 +356,17 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
   - `demo/out/<name>/` has a `demo.mp4` that plays and two 1920×1080 PNGs. Open the PNGs and look at them.
   - `log.txt` shows MENU, PROG_RED and DPAD_UP, each with a `down=true` and a `down=false` line, `held=1500` on PROG_RED's UP, and `consumed=false` throughout.
   - Also press the arrow keys in the emulator window and check the key log. If they show up, the README can say the window's keyboard reaches the service. If not, it says the keyboard only moves around the launcher.
-- [ ] **Step 5: README.** Add a short "Try it on the emulator" section:
+- [x] **Step 5: README.** Add a short "Try it on the emulator" section:
   - Start the emulator (the command above), then run the script with `demo/task7.txt` (or the latest demo) to install the build.
   - Drive it in the emulator window with the arrow keys, Enter and Esc, as far as Step 4 found that works.
   - Any key can be sent with `adb -s emulator-5554 shell am broadcast -a io.github.lettuceketchup.tvqs.DEBUG_KEY --es key <name>`, e.g. `MENU` or `PROG_RED` to `PROG_BLUE`, and `--el hold 1500` for a held press.
   - From Task 6, backlight, warmth and picture-off are simulated on a grey backdrop (darkening and a tint), not the real panel.
-- [ ] **Step 6: Commit** `"Emulator demo harness"`.
+- [x] **Step 6: Commit** `"Emulator demo harness"`.
+
+**Done 2026-11-03.** Findings:
+- The emulator window's keyboard reaches the service: the arrows, Enter (as `DPAD_CENTER`) and Esc (as `BACK`). MENU and the colours still need `DEBUG_KEY`.
+- screenrecord writes a frame only when the screen changes, so a demo with nothing drawn yet is a single still frame.
+- In `demo.ps1`, the `Adb` helper calls `adb.exe` by its full name: PowerShell matches command names case-insensitively, so calling `adb` inside it recursed. `logcat -c` sometimes fails on the emulator, so it runs outside the helper and doesn't abort the demo.
 
 ### Task 6: Service wiring, settings I/O, screen off and the corner pill
 

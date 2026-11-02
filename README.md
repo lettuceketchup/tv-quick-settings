@@ -36,7 +36,7 @@ Status: **design and TV tests done** ([spec](docs/superpowers/specs/2026-11-02-t
 
 ## Build environment
 
-Not set up yet. Plan: Android command-line tools + JDK on this Windows PC (no Android Studio needed), Kotlin, no third-party libraries unless needed. Install with adb: `adb install`, then the `pm grant` above.
+Set up 2026-11-02: JDK 17 and the Android command-line tools on this Windows PC (no Android Studio), Kotlin, no runtime libraries. `./gradlew assembleDebug` builds the APK and `./gradlew testDebugUnitTest` runs the unit tests. Install on the TV with `adb install -r`, then the `pm grant` above (once).
 
 ## Try it on the emulator
 

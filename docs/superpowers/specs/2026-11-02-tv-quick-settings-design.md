@@ -161,4 +161,4 @@ Package name, minimum/target SDK (the TV runs Android 11), the build setup on Wi
 
 ## Next steps
 
-1. Implementation plan. Its first phase is the key tests on the TV (when it's free): the button log and the setting keys table above. The tile list is settled from those results before any tile is built. Install the JDK and the Android command-line tools, then build.
+The plan (`docs/superpowers/plans/2026-11-02-tv-quick-settings.md`) is being built; CLAUDE.md has where it stands. The TV tests are done and the tile list above is final.
