@@ -33,7 +33,7 @@ sealed interface Effect {
 data class UiState(val barOpen: Boolean, val focus: Int, val paneIndex: Int?, val covered: Boolean, val warning: Boolean)
 
 const val LONG_PRESS_MS = 1000L
-private val COLOURS = setOf(Key.RED, Key.GREEN, Key.YELLOW, Key.BLUE)
+val COLOURS = setOf(Key.RED, Key.GREEN, Key.YELLOW, Key.BLUE)
 // Index into presets (Day, Evening, Night).
 private val COLOUR_PRESET = mapOf(Key.RED to 2, Key.GREEN to 1, Key.YELLOW to 0)
 

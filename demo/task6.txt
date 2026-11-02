@@ -1,0 +1,27 @@
+shot start
+key PROG_RED
+wait 0.5
+shot night
+shell settings get global picture_backlight
+key PROG_GREEN
+wait 0.5
+shot evening
+shell settings put global picture_backlight 50
+key PROG_GREEN 2000
+wait 0.5
+shot saved-evening
+key PROG_GREEN 4000
+key MEDIA_PAUSE 1
+key PROG_YELLOW
+wait 0.5
+shot day
+key PROG_BLUE
+wait 0.5
+shot picture-off
+shell settings get global power_picture_off
+key DPAD_CENTER
+wait 0.5
+shot picture-back
+shell settings get global power_picture_off
+wait 3
+shot end

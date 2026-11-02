@@ -94,3 +94,10 @@ fun modeLabel(tile: ModeTile, value: Int): String =
 
 fun presetIndex(presets: List<Preset>, backlight: Int, warmth: Int): Int =
     presets.indexOfFirst { it.backlight == backlight && it.warmth == warmth }
+
+// Stored form "Day:100:2;Evening:60:3;Night:20:3". Anything else falls back to the defaults.
+fun formatPresets(presets: List<Preset>): String = presets.joinToString(";") { "${it.name}:${it.backlight}:${it.warmth}" }
+
+fun parsePresets(s: String?): List<Preset> = runCatching {
+    s!!.split(";").map { val (n, b, w) = it.split(":"); Preset(n, b.toInt(), w.toInt()) }
+}.getOrNull()?.takeIf { it.size == DEFAULT_PRESETS.size } ?: DEFAULT_PRESETS

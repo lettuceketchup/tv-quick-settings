@@ -19,4 +19,6 @@ class TilesTest {
     @Test fun soundOptionsOnlyKnownValues() = assertEquals((0..6).toList(), (defaultTiles()[TileId.SOUND] as ModeTile).options.map { it.value })
     @Test fun presetMatchesBothValues() { assertEquals(1, presetIndex(DEFAULT_PRESETS, 60, 3)); assertEquals(-1, presetIndex(DEFAULT_PRESETS, 60, 2)) }
     @Test fun presetUnknownIsCustom() = assertEquals("Custom", modeLabel(defaultTiles()[TileId.PRESET] as ModeTile, -1))
+    @Test fun presetsRoundTrip() { assertEquals("Day:100:2;Evening:60:3;Night:20:3", formatPresets(DEFAULT_PRESETS)); assertEquals(DEFAULT_PRESETS, parsePresets(formatPresets(DEFAULT_PRESETS))) }
+    @Test fun badPresetsFallBack() = listOf(null, "", "Day:100", "Day:x:2;Evening:60:3;Night:20:3", "Day:100:2").forEach { assertEquals(DEFAULT_PRESETS, parsePresets(it)) }
 }
