@@ -1,13 +1,12 @@
 package io.github.lettuceketchup.tvqs
 
+import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.graphics.drawable.ClipDrawable
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.LayerDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -79,7 +78,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
             tileViews = TileId.entries.map { TileView(tiles.getValue(it)).also(row::addView) }
         }
         visibility = if (state.barOpen) VISIBLE else GONE
-        if (!state.barOpen) return
+        if (!state.barOpen) { paneHolder.removeAllViews(); pane = null; return }
         tileViews.forEachIndexed { i, v -> v.update(c, i == state.focus, animate = !opening) }
 
         // Centre the focused tile. All tiles before it are unfocused and the row's width never changes,
@@ -90,12 +89,18 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
 
         val tile = tiles.getValue(TileId.entries[state.focus])
         if (state.paneIndex == null || tile !is ModeTile) {
-            if (pane != null) { paneHolder.removeAllViews(); pane = null }
+            pane?.let { old ->
+                old.animate().alpha(0f).translationY(px(12).toFloat()).setDuration(ANIM_MS).withEndAction { paneHolder.removeView(old) }
+                pane = null
+            }
             return
         }
         val p = pane?.takeIf { it.tile == tile } ?: Pane(tile).also {
             paneHolder.removeAllViews()
             paneHolder.addView(it, LayoutParams(focusW, WRAP).apply { leftMargin = chev + focusLeft - x })
+            it.alpha = 0f
+            it.translationY = px(12).toFloat()
+            it.animate().alpha(1f).translationY(0f).setDuration(ANIM_MS)
             pane = it
         }
         p.update(c, state.paneIndex)
@@ -126,15 +131,15 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         private val name = text(t.label, NAME_SP)
         private val under = text(t.label, NAME_SP).apply { alpha = 0.7f } // the name below the icon when unfocused
         private val hint = text(HINT, HINT_SP)
-        // Level: a thin level bar as in the pill, beside the icon when unfocused and under the number when focused
+        // Level: the level in chunks, beside the icon when unfocused and under the number when focused
         // (stacking it under the name made the whole bar taller). ▲▼ beside the name when focused.
         private val number = text("", NUMBER_SP)
         private val up = arrow(true)
         private val down = arrow(false)
-        private val lightBar = levelBar(Color.WHITE)
-        private val darkBar = levelBar(DARK)
-        private val headBar = View(context).apply { background = lightBar }
-        private val bar = View(context).apply { background = darkBar }
+        private val headBar = Chunks(context, Color.WHITE)
+        private val bar = Chunks(context, DARK)
+        private val body = LinearLayout(context) // slides when Up/Down changes the value
+        private var rank: Int? = null // the value's place, top to bottom, for the slide's direction
         // Other bodies: value at the bottom; when focused, ▲ the option above and ▼ the one below, each blank at an end.
         private val above = ArrowLine(true)
         private val value = text("", VALUE_SP)
@@ -150,7 +155,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
                 addView(name, LayoutParams(0, WRAP, 1f))
                 addView(hint, LayoutParams(WRAP, WRAP).apply { marginStart = px(6) })
                 if (t is LevelTile) {
-                    addView(headBar, LayoutParams(0, px(4), 1f).apply { marginStart = px(4) })
+                    addView(headBar, LayoutParams(0, px(8), 1f).apply { marginStart = px(4) })
                     addView(up, LayoutParams(px(10), px(8)).apply { marginStart = px(6) })
                     addView(down, LayoutParams(px(10), px(8)).apply { marginStart = px(3) })
                 }
@@ -160,8 +165,8 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
                 gravity = Gravity.BOTTOM
                 addView(under)
                 addView(number)
-                addView(bar, LayoutParams(MATCH, px(4)).apply { topMargin = px(6); bottomMargin = px(4) })
-            } else LinearLayout(context).apply {
+                addView(bar, LayoutParams(MATCH, px(8)).apply { topMargin = px(4); bottomMargin = px(2) })
+            } else body.apply {
                 orientation = VERTICAL
                 gravity = Gravity.BOTTOM
                 addView(under)
@@ -174,6 +179,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
 
         fun update(c: Controller, focused: Boolean, animate: Boolean) {
             val fg = if (focused) DARK else Color.WHITE
+            val wasFocused = this.focused == true
             if (focused != this.focused) {
                 // Grow or shrink from the old size with scale: animating the size itself would re-layout every frame.
                 if (animate && this.focused != null) {
@@ -202,23 +208,38 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
                 is LevelTile -> {
                     val level = v ?: 0
                     number.set("$level")
-                    for (d in listOf(lightBar, darkBar)) d.level = level.coerceIn(0, 100) * 100 // ClipDrawable's level is 0–10000
+                    val chunks = (level.coerceIn(0, 100) + BACKLIGHT_STEP / 2) / BACKLIGHT_STEP
+                    headBar.set(chunks, animate)
+                    bar.set(chunks, animate)
+                    slide(number, -level, animate && wasFocused && focused) // a higher number rolls up from below
                     up.visibility = if (!focused) GONE else if (level < 100) VISIBLE else INVISIBLE
                     down.visibility = if (!focused) GONE else if (level > 0) VISIBLE else INVISIBLE
                 }
                 is ModeTile -> {
                     val raw = v ?: -1 // the Preset tile's value is already an index into its options
                     val i = t.options.indexOfFirst { it.value == raw }
+                    slide(body, i, animate && wasFocused && focused)
                     lines(modeLabel(t, raw), stepMode(i, t.options.size, true)?.let { t.options[it].label },
                         stepMode(i, t.options.size, false)?.let { t.options[it].label }, focused, fg)
                 }
                 SleepTile -> {
                     val left = v ?: 0
+                    slide(body, -left, animate && wasFocused && focused) // longer times sit above
                     lines(if (left == 0) "Off" else "$left min left", nextLonger(left)?.let { "$it min" },
                         nextShorter(left)?.let { if (it == 0) "Off" else "$it min" }, focused, fg)
                 }
                 is ActionTile -> lines(if (focused) "Press OK" else "", null, null, focused, fg)
             }
+        }
+
+        // The ▲ option sits above the value, so moving up the list brings the new value down from above.
+        private fun slide(view: View, rank: Int, animate: Boolean) {
+            val old = this.rank
+            this.rank = rank
+            if (!animate || old == null || old == rank) return
+            view.translationY = px(if (rank < old) -10 else 10).toFloat()
+            view.alpha = 0.3f
+            view.animate().translationY(0f).alpha(1f).setDuration(ANIM_MS)
         }
 
         private fun lines(text: String, aboveLabel: String?, belowLabel: String?, focused: Boolean, fg: Int) {
@@ -247,38 +268,62 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         }
     }
 
-    // Every option, a tick on the current one, the highlight inverted.
-    private inner class Pane(val tile: ModeTile) : LinearLayout(context) {
+    // Every option, a tick on the current one, the highlight inverted. The highlight slides between rows,
+    // and the tick swells for a moment when it moves to a new option.
+    private inner class Pane(val tile: ModeTile) : FrameLayout(context) {
+        private val rowH = maxOf(px(ICON), lineH(VALUE_SP, bold = true)) + px(12) // fixed, so the slide target needs no layout
         private val rows = tile.options.map { o ->
             val tick = image(R.drawable.ic_tick, Color.WHITE)
             val label = text(o.label, VALUE_SP)
             val row = LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(pad - px(4), px(6), pad - px(4), px(6))
+                setPadding(pad - px(4), 0, pad - px(4), 0)
                 addView(tick, LayoutParams(px(ICON), px(ICON)).apply { marginEnd = px(6) })
                 addView(label)
             }
             Triple(row, tick, label)
         }
-        private val highlightBg = rounded(Color.WHITE, 7)
+        private val highlightView = View(context).apply { background = rounded(Color.WHITE, 7) }
+        private var shown = -1
+        private var current: Int? = null
+        private val recolor = Runnable { colour() }
 
         init {
-            orientation = VERTICAL
             background = rounded(0xBF000000.toInt(), 14)
             setPadding(px(4), px(4), px(4), px(4))
-            rows.forEach { addView(it.first) }
+            addView(highlightView, LayoutParams(MATCH, rowH))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                rows.forEach { addView(it.first, LinearLayout.LayoutParams(MATCH, rowH)) }
+            })
         }
 
         fun update(c: Controller, highlight: Int) {
-            rows.forEachIndexed { i, (row, tick, label) ->
-                val hi = i == highlight
-                val fg = if (hi) DARK else Color.WHITE
-                row.background = if (hi) highlightBg else null
-                tick.setColorFilter(fg)
-                tick.visibility = if (tile.options[i].value == c.valueOf(tile.id)) VISIBLE else INVISIBLE
-                label.setTextColor(fg)
-                label.typeface = if (hi) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            val cur = c.valueOf(tile.id)
+            rows.forEachIndexed { i, (_, tick, _) ->
+                val ticked = tile.options[i].value == cur
+                tick.visibility = if (ticked) VISIBLE else INVISIBLE
+                if (ticked && current != null && cur != current) {
+                    tick.scaleX = 1.6f
+                    tick.scaleY = 1.6f
+                    tick.animate().scaleX(1f).scaleY(1f).setDuration(200)
+                }
             }
+            current = cur
+            if (highlight == shown) return
+            val y = (highlight * rowH).toFloat()
+            removeCallbacks(recolor)
+            if (shown < 0) { highlightView.translationY = y; shown = highlight; colour(); return }
+            shown = highlight
+            highlightView.animate().translationY(y).setDuration(ANIM_MS)
+            postDelayed(recolor, ANIM_MS / 2) // swap the text colours when the highlight is halfway across
+        }
+
+        private fun colour() = rows.forEachIndexed { i, (_, tick, label) ->
+            val fg = if (i == shown) DARK else Color.WHITE
+            tick.setColorFilter(fg)
+            label.setTextColor(fg)
+            label.typeface = if (i == shown) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         }
     }
 
@@ -295,8 +340,6 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
 
     private fun image(res: Int, color: Int) = ImageView(context).apply { setImageResource(res); setColorFilter(color) }
     private fun arrow(up: Boolean) = image(R.drawable.ic_arrow, Color.WHITE).apply { if (!up) rotation = 180f }
-    private fun levelBar(color: Int) =
-        LayerDrawable(arrayOf(ColorDrawable(color and 0x00FFFFFF or 0x40000000), ClipDrawable(ColorDrawable(color), Gravity.START, ClipDrawable.HORIZONTAL)))
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply { setColor(color); cornerRadius = px(radiusDp).toFloat() }
 
     private fun paint(sp: Float, bold: Boolean) = Paint().apply {
@@ -318,6 +361,7 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
         const val NUMBER_SP = 22f
         const val HINT = "OK …"
         const val FOCUS_MS = 150L
+        const val ANIM_MS = 150L
         val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         val ICONS = mapOf(
             TileId.BACKLIGHT to R.drawable.ic_backlight, TileId.WARMTH to R.drawable.ic_warmth,
@@ -325,5 +369,38 @@ class BarView(ctx: Context) : FrameLayout(ctx) {
             TileId.SOUND to R.drawable.ic_sound, TileId.OUTPUT to R.drawable.ic_output,
             TileId.SLEEP to R.drawable.ic_sleep, TileId.SCREEN_OFF to R.drawable.ic_screen_off,
         )
+    }
+}
+
+// Backlight's level as 10 chunks with small gaps; the chunk that fills or empties swells for a moment.
+private class Chunks(ctx: Context, private val color: Int) : View(ctx) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var filled = -1
+    private var pulse = -1
+    private var swell = 0f // 1 at the start of a pulse, 0 at rest
+    private val anim = ValueAnimator.ofFloat(1f, 0f).apply {
+        duration = 180
+        addUpdateListener { swell = it.animatedValue as Float; invalidate() }
+    }
+
+    fun set(filled: Int, animate: Boolean) {
+        if (filled == this.filled) return
+        if (animate && this.filled >= 0) { pulse = maxOf(filled, this.filled) - 1; anim.start() }
+        this.filled = filled
+        invalidate()
+    }
+
+    override fun onDraw(c: Canvas) {
+        val n = 100 / BACKLIGHT_STEP
+        val d = resources.displayMetrics.density
+        val gap = 2 * d
+        val w = (width - (n - 1) * gap) / n
+        for (i in 0 until n) {
+            paint.color = if (i < filled) color else color and 0x00FFFFFF or 0x40000000
+            val h = height / 2f * (1 + if (i == pulse) swell else 0f) // rests at half the view's height, swells to all of it
+            val left = i * (w + gap)
+            val top = (height - h) / 2
+            c.drawRoundRect(left, top, left + w, top + h, d, d, paint)
+        }
     }
 }

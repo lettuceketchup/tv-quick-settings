@@ -41,9 +41,12 @@ class ControllerTest {
         assertNull(c.state.paneIndex)
     }
 
-    @Test fun panePickWritesAndCloses() {
+    // The pane stays open after a pick (user, 2026-11-03); Back closes it.
+    @Test fun panePickWritesAndStaysOpen() {
         c.press(Key.MENU); c.focusOn(TileId.PICTURE); c.press(Key.OK); c.press(Key.DOWN); c.press(Key.OK)
         assertTrue(Effect.Write(KEY_PICTURE, PICTURE_OPTIONS[1].value) in c.effects)
+        assertEquals(1, c.state.paneIndex)
+        c.press(Key.BACK)
         assertNull(c.state.paneIndex)
     }
 

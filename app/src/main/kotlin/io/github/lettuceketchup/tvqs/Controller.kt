@@ -166,7 +166,7 @@ class Controller(private val tiles: Map<TileId, Tile>, presets: List<Preset>) {
         when (k) {
             Key.UP -> paneIndex = (i - 1).coerceAtLeast(0)
             Key.DOWN -> paneIndex = (i + 1).coerceAtMost(tile.options.lastIndex)
-            Key.OK -> { write(tile.id, tile.key!!, tile.options[i].value); paneIndex = null }
+            Key.OK -> write(tile.id, tile.key!!, tile.options[i].value) // stays open; Back closes it
             Key.BACK -> paneIndex = null
             Key.LEFT, Key.RIGHT -> { paneIndex = null; barKey(k) }
             else -> {}
