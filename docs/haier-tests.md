@@ -76,6 +76,15 @@ Other things seen: the Power page also has Switch Off Timer and "No Signal Auto 
 
 With the picture off by `power_picture_off` 0, `dumpsys power` still says `mWakefulness=Awake`: the TV doesn't treat it as standby. `adb exec-out screencap` doesn't capture an HDMI input's picture.
 
+## Picture mode, warmth and the bar (Task 7, 2026-11-03)
+
+- The TV menu and the app take the same path: both write the `Settings.Global` key, and the TV's config service (`TVSettingConfig`, in its own process) applies it with `setConfigValue`. Backlight, warmth and picture mode all work from the app.
+- After a `picture_mode` change the service writes the new mode's `picture_backlight` (and `picture_mode_dolby`) about 0.4 s later, with a normal change notification. Until then the key still holds the old mode's value.
+- Warmth: the TV writes the gains along with `picture_color_temperature`: Warm sets `picture_red_gain` 2 and `picture_blue_gain` −2, Standard sets both to 0. The user saw Cool, Standard and Warm differ, with Warm clearly warmer.
+- Each mode keeps its own backlight; during these tests User mode ended up with Standard's 100 (cause not pinned down). The user reset it to 56 in the menu and doesn't mind test changes to these values.
+- `screencap` shows YouTube's video area as black, so on-TV screenshots show the overlays only.
+- A fast Back-Back (186 ms) while the bar had the keys didn't start Projectivy's screensaver; with the bar closed it does (and fails, see below).
+
 ## Screensaver (Ambient)
 
 - **Projectivy already starts it**: "Ambient Mode on 'Back' double press" is on, and a Back double press launches `com.android.systemui/.Somnambulator` (seen in logcat). That covers what the Ambient tile was for.

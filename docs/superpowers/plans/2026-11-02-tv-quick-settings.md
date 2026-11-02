@@ -448,8 +448,8 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
 - Level tiles show the number plus a vertical segmented bar (`100 / BACKLIGHT_STEP` = 10 blocks). When focused, ▲ appears above and ▼ below, each hidden at its limit. Mode and sleep tiles, when focused, show three lines: ▲ previous / current / ▼ next, with the empty end blank. Picture/Sound show "OK ⋯". Action tiles show "Press OK". The list pane sits above the focused tile, with a tick on the current option and the highlight inverted.
 - Icons: vector drawables you draw yourself in `res/drawable/` (simple strokes, a few lines of XML each). Don't use Unicode glyphs (the TV font may lack them) and don't add an icon library. If an icon doesn't read on the TV, drop it rather than redraw it.
 
-- [ ] **Step 1: Implement `BarView`** to the rules above.
-- [ ] **Step 1a: Emulator demo.** Build, then write `demo/task7.txt` and run it. It covers the same ground as Step 2's items 1–6:
+- [x] **Step 1: Implement `BarView`** to the rules above.
+- [x] **Step 1a: Emulator demo.** Build, then write `demo/task7.txt` and run it. It covers the same ground as Step 2's items 1–6:
   ```
   shell settings put global picture_backlight 37
   key MENU
@@ -483,7 +483,7 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
   shot timed-out
   ```
   Expected: `open` shows the bar with Backlight focused at 37; the log shows `50` after the two Ups (37 → 40 → 50, the off-grid snap); `wrapped-to-screen-off` shows Screen off focused with the row scrolled and a left chevron; `picture-pane` shows the list above the Picture tile with a tick on Standard; `picture-picked` shows Vivid; `closed` and `timed-out` show no bar. Check each PNG against "What the view must show" (strip insets, focused tile 1.3× and never clipped, text legible at 1080p), fix what differs, rerun, then send the user the video and PNGs before Step 2.
-- [ ] **Step 2: Build and install** (TV free?), and walk through these with the user. Take a screencap after each, check it, and fix anything that differs from the spec before moving on:
+- [x] **Step 2: Build and install** (TV free?), and walk through these with the user. Take a screencap after each, check it, and fix anything that differs from the spec before moving on:
   1. MENU opens the bar.
   2. Up/Down on Backlight change the backlight live.
   3. Left from the first tile goes to Screen off (the last), and the row scrolls with the chevrons right.
@@ -493,7 +493,13 @@ The emulator isn't a Haier: the Haier setting keys are seeded so the app reads s
   7. Warmth by eye: User → Cool → Standard → Warm on a white or grey screen. The user confirms each looks different, and that Warm is clearly warmer. (Task 0 only saw the firmware accept the value.)
   8. Output with the ARC audio system on: switch to External audio system and back. The sound moves to the system and back to the TV speakers. If it doesn't, stop and ask the user: the Output tile is dropped (spec: no half-working tiles).
   9. Projectivy: with the Picture pane open, press Back twice quickly. Projectivy also sees both presses (every filtering service gets each key, even one another service consumed), so its Back double press may start the screensaver. Also press MENU twice quickly, and check Projectivy's "Menu double press" setting. If either fires, tell the user. The options are to set that Projectivy action to nothing, or to make one Back close the whole bar.
-- [ ] **Step 3: Commit** `"Bar view"`.
+  **Result (2026-11-03):** checks 1–7 and 9 passed; 8 (Output with the ARC system) is open, as there's no ARC system to test with. Fixes from the TV:
+  - **Lag.** Rebuilding every tile on each key took 65–190 ms per render on the Haier, twice per press. Views are now built once (at service start) and updated in place, and renders that would change nothing are skipped: 10–20 ms per press, first open 76 ms.
+  - **Picture mode one change behind.** After a `picture_mode` write the TV's config service writes the new mode's `picture_backlight` about 0.4 s later, after Task 6's 300 ms re-read. A `ContentObserver` on the setting keys now re-reads whenever the TV changes one (this also catches the TV menu's own changes); the 300 ms re-read is gone.
+  - **The bar jumped when a pane opened or closed.** The window was wrap-height, so the pane resized it. The bar's window is now full screen (transparent, untouchable), and nothing resizes.
+  - Warmth from the bar reaches the firmware exactly as the TV menu does (`setConfigValue g_video__clr_temp`, and the TV writes the red/blue gains); the user confirmed Warm is clearly warmer. Projectivy doesn't react to a fast Back-Back or MENU-MENU while the bar has the keys.
+  - Builder's calls: ▲/▼ and the tick are drawn vectors and the hint is "OK …" (the TV font may lack the glyphs); tile sizes are measured from their text at the device font scale; the scroll target is arithmetic; the row fades at its edges.
+- [x] **Step 3: Commit** `"Bar view"`.
 
 ### Task 8: Sleep timer runtime and standby
 

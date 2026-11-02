@@ -65,7 +65,8 @@ class QuickService : AccessibilityService() {
         val margin = (32 * resources.displayMetrics.density).toInt()
         overlay(pill, Gravity.TOP or Gravity.END) { x = margin; y = margin }
         bar = BarView(this)
-        overlay(bar, Gravity.BOTTOM) { width = MATCH }
+        // Full screen, so opening the pane never resizes the window: a resize made the bar jump on the TV.
+        overlay(bar, Gravity.BOTTOM) { width = MATCH; height = MATCH }
         refresh()
         for (k in listOf(KEY_BACKLIGHT, KEY_WARMTH, KEY_PICTURE, KEY_SOUND, KEY_OUTPUT)) {
             contentResolver.registerContentObserver(Settings.Global.getUriFor(k), false, observer)
