@@ -23,6 +23,17 @@ class ControllerTest {
     @Test fun upOnBacklightWritesNextTick() { c.press(Key.MENU); c.press(Key.UP); assertTrue(Effect.Write("picture_backlight", 40) in c.effects) }
     @Test fun presetTileFollowsValues() { c.press(Key.MENU); assertEquals(-1, c.valueOf(TileId.PRESET)); c.press(Key.GREEN); assertEquals(1, c.valueOf(TileId.PRESET)) }
 
+    // TV, 2026-11-03: a Green hold saved Day's values into Evening, and the tile then stuck on Day.
+    @Test fun presetTileStepsPastDuplicatePresets() {
+        c.press(Key.YELLOW); c.hold(Key.GREEN)
+        c.press(Key.MENU); c.focusOn(TileId.PRESET)
+        assertEquals(1, c.valueOf(TileId.PRESET))
+        c.press(Key.UP)
+        assertEquals(0, c.valueOf(TileId.PRESET))
+        c.press(Key.DOWN)
+        assertEquals(1, c.valueOf(TileId.PRESET))
+    }
+
     @Test fun okOnPictureOpensPaneButNotOnWarmth() {
         c.press(Key.MENU); c.focusOn(TileId.PICTURE); c.press(Key.OK)
         assertEquals(0, c.state.paneIndex)

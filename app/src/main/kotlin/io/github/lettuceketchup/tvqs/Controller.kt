@@ -43,6 +43,7 @@ class Controller(private val tiles: Map<TileId, Tile>, presets: List<Preset>) {
     private val values = mutableMapOf<TileId, Int>()
     private val swallowUp = mutableSetOf<Key>() // keys whose DOWN was consumed, so their UP is too
     private var afterLongColourUp = false
+    private var lastPreset = -1 // last applied or saved; tells apart presets saved with the same values
 
     val effects = mutableListOf<Effect>()
     var sleepLeftMin = 0
@@ -58,7 +59,9 @@ class Controller(private val tiles: Map<TileId, Tile>, presets: List<Preset>) {
     fun refresh(values: Map<TileId, Int>) { this.values.putAll(values) }
 
     fun valueOf(id: TileId): Int? = when (id) {
-        TileId.PRESET -> values[TileId.BACKLIGHT]?.let { b -> values[TileId.WARMTH]?.let { w -> presetIndex(presets, b, w) } }
+        TileId.PRESET -> values[TileId.BACKLIGHT]?.let { b -> values[TileId.WARMTH]?.let { w ->
+            lastPreset.takeIf { it >= 0 && presets[it].backlight == b && presets[it].warmth == w } ?: presetIndex(presets, b, w)
+        } }
         TileId.SLEEP -> sleepLeftMin
         else -> values[id]
     }
@@ -125,12 +128,14 @@ class Controller(private val tiles: Map<TileId, Tile>, presets: List<Preset>) {
         val b = values[TileId.BACKLIGHT] ?: return
         val w = values[TileId.WARMTH] ?: return
         presets[i] = presets[i].copy(backlight = b, warmth = w)
+        lastPreset = i
         effects += Effect.SavePresets(presets.toList())
         effects += Effect.Pill("Saved to ${presets[i].name}", "Backlight $b · ${warmthLabel(w)}", b, 2000)
     }
 
     private fun applyPreset(i: Int, pill: Boolean) {
         val p = presets[i]
+        lastPreset = i
         write(TileId.BACKLIGHT, KEY_BACKLIGHT, p.backlight)
         write(TileId.WARMTH, KEY_WARMTH, p.warmth)
         if (pill) effects += Effect.Pill(p.name, "Backlight ${p.backlight} · ${warmthLabel(p.warmth)}", p.backlight, 2000)
