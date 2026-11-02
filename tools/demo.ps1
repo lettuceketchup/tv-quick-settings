@@ -40,7 +40,8 @@ foreach ($k in $start.Keys) { Adb shell settings put global $k $start[$k] }
 
 Adb shell input keyevent WAKEUP
 Adb shell input keyevent HOME
-Adb logcat -c
+# Not through Adb: the emulator sometimes fails to clear the log, and older lines in log.txt are harmless.
+& adb.exe -s emulator-5554 logcat -c
 # screenrecord stops by itself at 180 s; keep demos shorter.
 $rec = Start-Process adb.exe -ArgumentList '-s', 'emulator-5554', 'shell', 'screenrecord', '--bit-rate', '8000000', '/sdcard/demo.mp4' -PassThru -NoNewWindow
 Start-Sleep 2
