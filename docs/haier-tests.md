@@ -17,8 +17,8 @@ The remote's key layout file (`/vendor/usr/keylayout/Vendor_005d_Product_0001.kl
 | Up / Down / Left / Right / OK | 0x0C0042 / 43 / 44 / 45 / 41 | `KEY_UP` … `KEY_SELECT` | `DPAD_*` |
 
 What this means for the build:
-- **The Linux codes can't tell the colour keys apart.** Android can only distinguish them if Haier's layout file maps the HID usages (`key usage 0x0c003a …`). Since 0xBB does reach Android as a working key, that's likely, but not proven. **First thing on the TV (Task 6):** log `keyCode` and `scanCode` for MENU, the four colours and FAV, and fill in `keyOf` from that log. If the four colours arrive with the same keyCode, the presets are only reachable from the bar (as the spec says).
-- **MENU long press needs no work from the app.** The remote itself turns a 3-second hold into a different key (0xBB). The app catches only the short MENU key and lets 0xBB through, and the TV opens Settings as it does today. The MENU key's own DOWN stays held for those 3 s, so the app must act on the MENU **UP** and must not open the bar when the hold lasted ≥ 1 s (Android repeats the held DOWN). Opening Settings from the app as well would open it twice.
+- **The Linux codes can't tell the colour keys apart.** Android can only distinguish them if Haier's layout file maps the HID usages (`key usage 0x0c003a …`). Since 0xBB does reach Android as a working key, that's likely, but not proven. **First thing on the TV (Task 1's key log):** log `keyCode` and `scanCode` for MENU, the four colours and FAV, and fill in `keyOf` from that log. If the four colours arrive with the same keyCode, the presets are only reachable from the bar (as the spec says).
+- **MENU long press needs no work from the app.** The remote itself turns a 3-second hold into a different key (0xBB). The app catches only the short MENU key and lets 0xBB through, and the TV opens Settings as it does today. The MENU key's own DOWN stays held for those 3 s, so the app must act on the MENU **UP** and must not open the bar when the hold lasted ≥ 1 s (measured from the key's down time: the app most likely gets no key repeats). Opening Settings from the app as well would open it twice.
 - `SETTINGS_COMPONENT` = `com.android.tv.settings/.MainSettings` (what 0xBB opens). Only needed if the app opens Settings itself.
 - A short MENU press currently does nothing visible (tested in Projectivy).
 - **Projectivy runs its own accessibility service** that filters keys (`com.spocky.projengmenu/.services.ProjectivyAccessibilityService`, "Enable button remapping" on). Both services see each key. Projectivy's Back double press and "Menu double press" stay as they are.
@@ -68,7 +68,7 @@ The TV can't report what it emits: there's no sensor, and screenshots are taken 
 | Picture | Keep, with the value list above |
 | Sound | Keep, with the value list above |
 | Output | Keep (the user has an ARC audio system): TV Speakers / External audio system |
-| Sleep | Keep. The TV's key can't start a timer, so the app counts down itself and puts the TV into standby (Task 8's method) |
+| Sleep | Keep. The TV's key can't start a timer, so the app counts down itself and puts the TV into standby (method checked in Task 1) |
 | Screen off | Keep: `power_picture_off` 0 / 1 |
 | Blue light | Dropped: no visible effect |
 | Dialogue | Dropped: no such option on this TV |
