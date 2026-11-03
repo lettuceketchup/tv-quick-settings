@@ -1,6 +1,7 @@
 package io.github.lettuceketchup.tvqs
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -72,6 +73,24 @@ class QuickService : AccessibilityService() {
         }
     }
 
+    // While any service filters keys, Android hands volume keys straight to the system and makes no key repeats,
+    // so a held Volume steps once. After each volume change, drop our filter for a while so the next hold repeats.
+    // Projectivy's volume fix does the same with its filter; the filter is off only while both are.
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (controller.state.barOpen || controller.state.warning) return
+            setKeyFilter(false)
+            handler.removeCallbacks(keyFilterOn)
+            handler.postDelayed(keyFilterOn, VOLUME_WINDOW_MS)
+        }
+    }
+    private val keyFilterOn = Runnable { setKeyFilter(true) }
+
+    private fun setKeyFilter(on: Boolean) {
+        val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        serviceInfo = serviceInfo.apply { flags = if (on) flags or flag else flags and flag.inv() }
+    }
+
     override fun onServiceConnected() {
         controller = Controller(tiles, parsePresets(prefs().getString("presets", null)))
         // The emulator has no Haier panel, so debug builds there fake one under the overlays.
@@ -89,6 +108,7 @@ class QuickService : AccessibilityService() {
             contentResolver.registerContentObserver(Settings.Global.getUriFor(k), false, observer)
         }
         registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        registerReceiver(volumeReceiver, IntentFilter("android.media.VOLUME_CHANGED_ACTION"))
         if (BuildConfig.DEBUG) {
             registerReceiver(debugReceiver, IntentFilter(DEBUG_STANDBY).apply { addAction(DEBUG_KEY); addAction(DEBUG_SLEEP) })
         }
@@ -219,6 +239,7 @@ class QuickService : AccessibilityService() {
         handler.removeCallbacksAndMessages(null)
         contentResolver.unregisterContentObserver(observer)
         unregisterReceiver(screenOffReceiver)
+        unregisterReceiver(volumeReceiver)
         if (BuildConfig.DEBUG) unregisterReceiver(debugReceiver)
         super.onDestroy()
     }
@@ -233,6 +254,7 @@ class QuickService : AccessibilityService() {
         const val DEBUG_KEY = "io.github.lettuceketchup.tvqs.DEBUG_KEY"
         const val DEBUG_SLEEP = "io.github.lettuceketchup.tvqs.DEBUG_SLEEP"
         const val BAR_TIMEOUT_MS = 8000L
+        const val VOLUME_WINDOW_MS = 5000L // after the last volume change; Projectivy uses about 5 s too
         const val MATCH = WindowManager.LayoutParams.MATCH_PARENT
     }
 }

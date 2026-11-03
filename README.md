@@ -54,7 +54,7 @@ adb -s 192.168.29.186:5555 shell settings put secure enabled_accessibility_servi
 adb -s 192.168.29.186:5555 shell settings put secure accessibility_enabled 1
 ```
 
-The grant and the service survive reinstalls (`install -r` with the same key), reboots and turning USB debugging off, so only the first install needs the last four lines. The old value on the Haier was Projectivy's service alone, `com.spocky.projengmenu/com.spocky.projengmenu.services.ProjectivyAccessibilityService`. After a reinstall the service rebinds within a few seconds; if it doesn't, set the old value and then the new one again.
+The grant and the service survive reinstalls (`install -r` with the same key), reboots and turning USB debugging off, so only the first install needs the last four lines. The old value on the Haier was Projectivy's service alone, `com.spocky.projengmenu/com.spocky.projengmenu.services.ProjectivyAccessibilityService`. Since 2026-11-03 Projectivy's service is off and the value is the app's service alone: any other service that filters keys breaks held volume (see `../tvs/haier/reference.md`). After a reinstall the service rebinds within a few seconds; if it doesn't, set the old value and then the new one again.
 
 Undo: turn the service off with `settings put secure enabled_accessibility_services <old value>`, or remove the app with `adb uninstall io.github.lettuceketchup.tvqs` (that also drops the grant).
 
