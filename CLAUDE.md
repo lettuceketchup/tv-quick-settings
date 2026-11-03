@@ -27,5 +27,5 @@ This repo is a git submodule of `tv-debloat` (the parent folder). The parent's C
 
 - Everything known about the Haier and its remote (photo, key codes, settings keys and their quirks) is in `../tvs/haier/reference.md`. Add new findings there.
 
-- Haier: `adb connect 192.168.29.186:5555` (IP not reserved; find it with a port-5555 scan on 192.168.29.x). USB debugging may be off; ask the user to turn it on.
+- Haier: `adb connect <haier-ip>:5555` (IP not reserved; find it with a port-5555 scan on the TV's subnet). USB debugging may be off; ask the user to turn it on.
 - Test a setting by writing it, asking the user what changed, and restoring the old value. Current values are in `docs/haier-global-settings.txt`.

@@ -16,7 +16,7 @@
 - No runtime dependencies. The only test dependency is `junit:junit:4.13.2`.
 - Work on the TV is reversible only. Every setting written during tests is restored and logged in `../tvs/haier/changes.md` (date, key, old → new → restored, result).
 - **Never operate the TV while someone is watching.** Before every adb step that changes what's on screen, ask the user whether the TV is free. Read-only commands (`settings get`, `dumpsys`, `getevent`) are fine at any time, but `getevent` needs the user to press buttons.
-- Haier adb: `adb connect 192.168.29.186:5555`. The IP isn't reserved; if that fails, scan 192.168.29.x for port 5555. USB debugging may be off; ask the user to turn it on.
+- Haier adb: `adb connect <haier-ip>:5555`. The IP isn't reserved; if that fails, scan the TV's subnet for port 5555. USB debugging may be off; ask the user to turn it on.
 - The only buttons that change behaviour are MENU (short press; a held MENU does nothing, because the remote's own long-press key opens Settings) and Red/Green/Yellow/Blue. Every other key passes through untouched unless the bar, a pane, the screen cover or the last-minute warning is up (see the spec's "Remote buttons").
 - Backlight: 10 segments, steps of 10. Presets: Day 100/Standard, Evening 60/Warm, Night 20/Warm (backlight % / warmth).
 - **Task 0 is done** (`docs/haier-tests.md`, and the Result column in the spec's "Setting keys" table). Tiles: Backlight, Warmth, Preset, Picture, Sound, Output, Sleep, Screen off, in that fixed order. Blue light, Dialogue and Ambient were dropped, and the plan review dropped Edit (edit mode). Mode keys take **only** the values listed there: an unlisted `picture_mode` value corrupted the User mode on the TV.
@@ -51,7 +51,7 @@ Nothing is built yet. This task fills in the spec's "Setting keys to confirm on 
 - Modify: `docs/superpowers/specs/2026-11-02-tv-quick-settings-design.md` (the table gets a "Result" column, and dropped tiles are marked)
 - Modify: `../tvs/haier/changes.md` (each write and restore)
 
-- [x] **Step 1: Ask the user whether the TV is free and USB debugging is on, then `adb connect 192.168.29.186:5555`.** Expected: `connected to …`.
+- [x] **Step 1: Ask the user whether the TV is free and USB debugging is on, then `adb connect <haier-ip>:5555`.** Expected: `connected to …`.
 - [x] **Step 2: Remote key codes.** Run `adb shell getevent -l` and have the user press MENU (short, then held 2 s), Red, Green, Yellow, Blue, FAV and Up. Record each Linux key name. Find the remote's key layout file (`adb shell dumpsys input`, under the remote's device, "KeyLayoutFile:"), `adb pull` it, and record the Android keycode name for each key. Expected: MENU→`MENU`, colours→`PROG_RED/GREEN/YELLOW/BLUE`. If they differ, record the real codes; Task 5's `keyOf` uses this table.
 - [x] **Step 3: MENU long-press target.** Have the user long-press MENU, then run `adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity"`. Record the component (`pkg/.Activity`) as `SETTINGS_COMPONENT`. Have the user press Back.
 - [x] **Step 4: Picture and sound mode names.** Have the user switch each picture mode in the TV menu; after each switch run `adb shell settings get global picture_mode`. Record the name → value pairs in menu order. Do the same for sound modes with `sound_style`.
